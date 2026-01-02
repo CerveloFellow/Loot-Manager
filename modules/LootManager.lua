@@ -3,18 +3,20 @@ local mq = require('mq')
 
 local LootManager = {}
 
-function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation, actorManager)
+function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation, actorManager, itemScore)
     local self = {
         multipleUseTable = {},
         myQueuedItems = {},
         listboxSelectedOption = {},
         lootedCorpses = {},
+        upgradeList = {},  -- NEW: Track upgrades for this character
         config = config,
         utils = utils,
         itemEvaluator = itemEvaluator,
         corpseManager = corpseManager,
         navigation = navigation,
-        actorManager = actorManager
+        actorManager = actorManager,
+        itemScore = itemScore  -- NEW: ItemScore module
     }
     
     function self.handleSharedItem(message)
@@ -38,11 +40,39 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     
     function self.printMultipleUseItems()
         mq.cmdf("/g List of items that can be used by members of your group")
-        for key, valueList in pairs(self.multipleUseTable) do
-            print("Key:", key)
+        for corpseId, valueList in pairs(self.multipleUseTable) do
             for _, value in ipairs(valueList) do
                 mq.cmdf("/g %s", value.itemLink)
             end
+        end
+        
+        -- NEW: Print upgrade information after item list (no delay needed)
+        self.printUpgradeList()
+    end
+    
+    -- NEW: Function to print upgrade list
+    function self.printUpgradeList()
+        print(string.format("DEBUG printUpgradeList: upgradeList has %d items", #self.upgradeList))
+        
+        if #self.upgradeList == 0 then
+            return
+        end
+        
+        local myName = mq.TLO.Me.Name()
+        
+        for _, upgrade in ipairs(self.upgradeList) do
+            print(string.format("DEBUG: upgrade.improvement = %s (type: %s)", 
+                tostring(upgrade.improvement), type(upgrade.improvement)))
+            
+            local improvementStr = ""
+            if upgrade.improvement >= 999 then
+                improvementStr = "NEW/Empty"
+            else
+                improvementStr = string.format("+%.1f%%", upgrade.improvement)
+            end
+            
+            mq.cmdf("/g %s wants %s for %s (%s)", 
+                myName, upgrade.itemName, upgrade.slotName, improvementStr)
         end
     end
     
@@ -133,13 +163,56 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                    (not itemEvaluator.skipItem(config, utils, corpseItem)) then
                     mq.cmdf("/g Shared Item: "..corpseItem.ItemLink('CLICKABLE')())
                     
-                    -- Use actualCorpseId instead of corpseObject.ID
+                    -- Broadcast to group
                     actorManager.broadcastShareItem(
                         actualCorpseId,
                         corpseItem.ID(), 
                         corpseItem.Name(), 
                         corpseItem.ItemLink('CLICKABLE')()
                     )
+                    
+                    -- NEW: Check if this item is an upgrade for THIS character
+                    local upgradeInfo = itemScore.evaluateItemForUpgrade(corpseItem, 1.0)
+                    if upgradeInfo then
+                        print(string.format("DEBUG: upgradeInfo = {slotName='%s', improvement=%.1f}", 
+                            upgradeInfo.slotName, upgradeInfo.improvement))
+                        
+                        -- Check if we already have this item recorded
+                        local found = false
+                        for idx, existing in ipairs(self.upgradeList) do
+                            if existing.itemName == corpseItem.Name() then
+                                -- Update if this is a better improvement
+                                if upgradeInfo.improvement > existing.improvement then
+                                    self.upgradeList[idx] = {
+                                        corpseId = actualCorpseId,
+                                        itemId = corpseItem.ID(),
+                                        itemName = corpseItem.Name(),
+                                        slotName = upgradeInfo.slotName,
+                                        improvement = upgradeInfo.improvement
+                                    }
+                                    print(string.format("DEBUG: Updated upgrade entry for %s", corpseItem.Name()))
+                                end
+                                found = true
+                                break
+                            end
+                        end
+                        
+                        if not found then
+                            local newUpgrade = {
+                                corpseId = actualCorpseId,
+                                itemId = corpseItem.ID(),
+                                itemName = corpseItem.Name(),
+                                slotName = upgradeInfo.slotName,
+                                improvement = upgradeInfo.improvement
+                            }
+                            table.insert(self.upgradeList, newUpgrade)
+                            print(string.format("DEBUG: Added new upgrade entry for %s: %.1f%% for %s", 
+                                corpseItem.Name(), newUpgrade.improvement, newUpgrade.slotName))
+                        end
+                        
+                        print(string.format("%s is a %.1f%% upgrade for %s", 
+                            corpseItem.Name(), upgradeInfo.improvement, upgradeInfo.slotName))
+                    end
                 end
             end
             
@@ -148,7 +221,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             end
         end
         
-        -- Use actualCorpseId here too
         table.insert(self.lootedCorpses, actualCorpseId)
         self.closeLootWindow()
         return true
@@ -158,13 +230,11 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         mq.cmdf("/target id %d", corpseId)
         mq.delay(300)
         
-        -- Check if we successfully targeted the corpse
         if (mq.TLO.Target.ID() or 0) == 0 then
             print("ERROR: Failed to target corpse ID: " .. tostring(corpseId))
             return false
         end
         
-        -- Get target coordinates and validate them
         local targetX = mq.TLO.Target.X()
         local targetY = mq.TLO.Target.Y()
         local targetZ = mq.TLO.Target.Z()
@@ -190,7 +260,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             mq.cmdf("/say #corpsefix")
             mq.delay(300)
             
-            -- Re-validate coordinates before each retry
             targetX = mq.TLO.Target.X()
             targetY = mq.TLO.Target.Y()
             targetZ = mq.TLO.Target.Z()
@@ -251,7 +320,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     end
     
     function self.lootQueuedItems()
-        -- Ensure myQueuedItems is initialized
         if not self.myQueuedItems then
             self.myQueuedItems = {}
             print("No items in queue to loot")
@@ -319,7 +387,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         mq.delay(500)
         
-        -- Main looting loop
         local corpseTable = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 10")())
 
         while #corpseTable > 0 do
@@ -348,7 +415,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             end
         end
         
-        -- Return to starting location
         navigation.navigateToLocation(config, startingLocation.X, startingLocation.Y, startingLocation.Z)
         mq.delay(startingLocation.timeToWait)
         
@@ -371,7 +437,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
 
         utils.multimapInsert(self.myQueuedItems, corpseId, queuedItem)
 
-        -- Remove from multiple use table
         for idx, items in pairs(self.multipleUseTable) do
             if tostring(idx) == tostring(corpseId) then
                 for idx2, tbl in pairs(items) do

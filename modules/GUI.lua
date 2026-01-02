@@ -185,6 +185,8 @@ function GUI.new(lootManager, actorManager)
         imgui.BeginGroup()
         if imgui.Button("Print Item Links") then
             lootManager.printMultipleUseItems()
+            -- Have all characters report their upgrades
+            mq.cmdf("/dgga /mlpu")
         end
 
         if imgui.Button("Print Unlooted\nCorpses") then
