@@ -54,6 +54,9 @@ local Commands = CommandsModule.new(
 -- Initialize GUI
 local GUI = GUIModule.new(LootManager, ActorManager)
 
+-- Register corpse stats handler
+ActorManager.setHandleCorpseStats(GUI.handleCorpseStats)
+
 -- Set loot options
 mq.cmdf("/lootnodrop never")
 
