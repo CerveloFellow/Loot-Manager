@@ -9,7 +9,8 @@ function GUI.new(lootManager, actorManager)
         radioSelectedOption = 0,
         groupMemberSelected = mq.TLO.Me.Name(),
         lootManager = lootManager,
-        actorManager = actorManager
+        actorManager = actorManager,
+        groupMemberCorpseStats = {}  -- Track unlooted corpse counts per member
     }
     
     function self.initializeDefaults()
@@ -27,6 +28,72 @@ function GUI.new(lootManager, actorManager)
         if lootManager.listboxSelectedOption == nil and next(lootManager.multipleUseTable) ~= nil then
             lootManager.listboxSelectedOption = {}
         end
+    end
+    
+    -- NEW: Function to get color based on unlooted corpse percentage
+    function self.getCorpseStatusColor(memberName)
+        local stats = self.groupMemberCorpseStats[memberName]
+        
+        if not stats or stats.totalCorpses == 0 then
+            return 1.0, 1.0, 1.0, 1.0  -- White (no corpses or no data)
+        end
+        
+        local unlootedPercent = (stats.unlootedCorpses / stats.totalCorpses) * 100
+        
+        if unlootedPercent >= 67 then
+            return 1.0, 0.0, 0.0, 1.0  -- Red (67-100%)
+        elseif unlootedPercent >= 34 then
+            return 1.0, 0.65, 0.0, 1.0  -- Orange (34-66%)
+        elseif unlootedPercent >= 1 then
+            return 1.0, 1.0, 0.0, 1.0  -- Yellow (1-33%)
+        else
+            return 1.0, 1.0, 1.0, 1.0  -- White (0%)
+        end
+    end
+    
+    -- NEW: Handler for receiving corpse stats from other group members
+    function self.handleCorpseStats(message)
+        if message.senderName then
+            self.groupMemberCorpseStats[message.senderName] = {
+                totalCorpses = message.totalCorpses or 0,
+                unlootedCorpses = message.unlootedCorpses or 0
+            }
+        end
+    end
+    
+    -- NEW: Update local corpse stats
+    function self.updateLocalCorpseStats()
+        local myName = mq.TLO.Me.Name()
+        if not myName then return end
+        
+        local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 10")() or 0
+        local unlootedCount = 0
+        
+        if totalCorpses > 0 then
+            for i = 1, totalCorpses do
+                local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 10")
+                if spawn and spawn.ID() and spawn.ID() > 0 then
+                    local corpseId = spawn.ID()
+                    local isLooted = false
+                    
+                    for _, lootedId in ipairs(lootManager.lootedCorpses) do
+                        if corpseId == lootedId then
+                            isLooted = true
+                            break
+                        end
+                    end
+                    
+                    if not isLooted then
+                        unlootedCount = unlootedCount + 1
+                    end
+                end
+            end
+        end
+        
+        self.groupMemberCorpseStats[myName] = {
+            totalCorpses = totalCorpses,
+            unlootedCorpses = unlootedCount
+        }
     end
     
     function self.everyoneLoot()
@@ -120,6 +187,7 @@ function GUI.new(lootManager, actorManager)
         if imgui.Button("Clear Shared List") then
             lootManager.multipleUseTable = {}
             lootManager.listboxSelectedOption = {}
+            lootManager.upgradeList = {}
             actorManager.broadcastClearSharedList()
             mq.cmdf("/g Shared loot list cleared")
         end
@@ -135,12 +203,20 @@ function GUI.new(lootManager, actorManager)
                 local memberName = mq.TLO.Group.Member(i).Name()
                 local isActive = (self.radioSelectedOption == i)
                 
+                -- Get color based on corpse status
+                local r, g, b, a = self.getCorpseStatusColor(memberName)
+                
                 ImGui.SetWindowFontScale(0.7)
+                imgui.PushStyleColor(ImGuiCol.Text, r, g, b, a)
+                
                 if imgui.RadioButton(memberName, isActive) then
                     self.radioSelectedOption = i
                     self.groupMemberSelected = memberName
                 end
+                
+                imgui.PopStyleColor()
                 ImGui.SetWindowFontScale(1.0)
+                
                 if i < groupSize then
                     imgui.SameLine()
                 end
@@ -197,6 +273,9 @@ function GUI.new(lootManager, actorManager)
     end
     
     function self.createGUI()
+        local lastStatsUpdate = 0
+        local statsUpdateInterval = 3  -- Update every 3 seconds
+        
         return function(open)
             local main_viewport = imgui.GetMainViewport()
             imgui.SetNextWindowPos(main_viewport.WorkPos.x + 800, main_viewport.WorkPos.y + 20, ImGuiCond.Once)
@@ -211,6 +290,14 @@ function GUI.new(lootManager, actorManager)
             end
             
             self.initializeDefaults()
+            
+            -- Update corpse statistics periodically
+            local currentTime = os.time()
+            if currentTime - lastStatsUpdate >= statsUpdateInterval then
+                self.updateLocalCorpseStats()
+                actorManager.requestCorpseStats()
+                lastStatsUpdate = currentTime
+            end
             
             imgui.PushItemWidth(imgui.GetFontSize() * -12)
 
