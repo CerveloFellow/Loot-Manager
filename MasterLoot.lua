@@ -2,17 +2,18 @@
 local mq = require('mq')
 local ImGui = require('ImGui')
 
--- Import modules
-local Config = require('modules.Config')
-local Utils = require('modules.Utils')
-local INIManager = require('modules.INIManager')
-local Navigation = require('modules.Navigation')
-local ItemEvaluator = require('modules.ItemEvaluator')
-local CorpseManager = require('modules.CorpseManager')
-local ActorManager = require('modules.ActorManager')
-local LootManagerModule = require('modules.LootManager')
-local CommandsModule = require('modules.Commands')
-local GUIModule = require('modules.GUI')
+-- Import modules (use forward slashes for Lua require)
+local Config = require('modules/Config')
+local Utils = require('modules/Utils')
+local INIManager = require('modules/INIManager')
+local Navigation = require('modules/Navigation')
+local ItemEvaluator = require('modules/ItemEvaluator')
+local CorpseManager = require('modules/CorpseManager')
+local ActorManager = require('modules/ActorManager')
+local ItemScore = require('modules/ItemScore')  -- NEW
+local LootManagerModule = require('modules/LootManager')
+local CommandsModule = require('modules/Commands')
+local GUIModule = require('modules/GUI')
 
 -- ============================================================================
 -- Main Script Initialization
@@ -25,14 +26,15 @@ print("INI file location: " .. Config.iniFile)
 -- Load configuration from INI
 INIManager.loadConfig(Config)
 
--- Initialize LootManager
+-- Initialize LootManager (now with ItemScore)
 local LootManager = LootManagerModule.new(
     Config,
     Utils,
     ItemEvaluator,
     CorpseManager,
     Navigation,
-    ActorManager
+    ActorManager,
+    ItemScore  -- NEW: Pass ItemScore module
 )
 
 -- Initialize Actor System
@@ -65,6 +67,7 @@ mq.bind("/tis", Commands.testShared)
 mq.bind("/mlrc", Commands.reloadConfig)
 mq.bind("/mlru", Commands.reportUnlootedCorpses)
 mq.bind("/mlpm", LootManager.printMultipleUseItems)
+mq.bind("/mlpu", LootManager.printUpgradeList)  -- NEW: Print upgrades command
 
 -- Register events
 mq.event('peerLootItem', "#*#mlqi #1# #2# #3#'", LootManager.queueItem)
