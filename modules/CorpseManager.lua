@@ -7,7 +7,7 @@ function CorpseManager.getCorpseTable(numCorpses)
     local corpseTable = {}
     
     for i = 1, numCorpses do
-        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 10")
+        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 20")
         
         if spawn and spawn.ID() and spawn.ID() > 0 then
             local x, y, z = spawn.X(), spawn.Y(), spawn.Z()

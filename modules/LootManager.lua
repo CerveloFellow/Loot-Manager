@@ -51,30 +51,37 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     end
     
     -- NEW: Function to print upgrade list
-    function self.printUpgradeList()
-        print(string.format("DEBUG printUpgradeList: upgradeList has %d items", #self.upgradeList))
-        
-        if #self.upgradeList == 0 then
-            return
-        end
-        
-        local myName = mq.TLO.Me.Name()
-        
-        for _, upgrade in ipairs(self.upgradeList) do
-            print(string.format("DEBUG: upgrade.improvement = %s (type: %s)", 
-                tostring(upgrade.improvement), type(upgrade.improvement)))
-            
-            local improvementStr = ""
-            if upgrade.improvement >= 999 then
-                improvementStr = "NEW/Empty"
-            else
-                improvementStr = string.format("+%.1f%%", upgrade.improvement)
-            end
-            
-            mq.cmdf("/g %s wants %s for %s (%s)", 
-                myName, upgrade.itemName, upgrade.slotName, improvementStr)
-        end
+    function self.printUpgradeList(itemName)
+    print(string.format("DEBUG printUpgradeList: upgradeList has %d items", #self.upgradeList))
+    
+    if #self.upgradeList == 0 then
+        return
     end
+    
+    local myName = mq.TLO.Me.Name()
+    
+    for _, upgrade in ipairs(self.upgradeList) do
+        -- Skip this upgrade if itemName is provided and doesn't match
+        if itemName and upgrade.itemName ~= itemName then
+            goto continue
+        end
+        
+        print(string.format("DEBUG: upgrade.improvement = %s (type: %s)", 
+            tostring(upgrade.improvement), type(upgrade.improvement)))
+        
+        local improvementStr = ""
+        if upgrade.improvement >= 999 then
+            improvementStr = "NEW/Empty"
+        else
+            improvementStr = string.format("+%.1f%%", upgrade.improvement)
+        end
+        
+        mq.cmdf("/g %s wants %s for %s (%s)", 
+            myName, upgrade.itemName, upgrade.slotName, improvementStr)
+        
+        ::continue::
+    end
+end
     
     function self.isLooted(corpseId)
         return utils.contains(self.lootedCorpses, corpseId)
@@ -387,7 +394,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         mq.delay(500)
         
-        local corpseTable = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 10")())
+        local corpseTable = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")())
 
         while #corpseTable > 0 do
             local currentCorpse

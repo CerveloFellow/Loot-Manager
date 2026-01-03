@@ -55,12 +55,12 @@ function ActorManager.initialize(lootManager)
                 end
             elseif actualMessage.type == 'requestCorpseStats' then
                 -- Calculate and send back our corpse stats
-                local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 10")() or 0
+                local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")() or 0
                 local unlootedCount = 0
                 
                 if totalCorpses > 0 then
                     for i = 1, totalCorpses do
-                        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 10")
+                        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 20")
                         if spawn and spawn.ID() and spawn.ID() > 0 then
                             local corpseId = spawn.ID()
                             local isLooted = false

@@ -66,12 +66,12 @@ function GUI.new(lootManager, actorManager)
         local myName = mq.TLO.Me.Name()
         if not myName then return end
         
-        local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 10")() or 0
+        local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")() or 0
         local unlootedCount = 0
         
         if totalCorpses > 0 then
             for i = 1, totalCorpses do
-                local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 10")
+                local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 20")
                 if spawn and spawn.ID() and spawn.ID() > 0 then
                     local corpseId = spawn.ID()
                     local isLooted = false
@@ -224,7 +224,7 @@ function GUI.new(lootManager, actorManager)
         end
     end
     
-    function self.renderItemListBox()
+function self.renderItemListBox()
         imgui.SetNextItemWidth(300)
 
         local itemHeight = imgui.GetTextLineHeightWithSpacing()
@@ -268,6 +268,15 @@ function GUI.new(lootManager, actorManager)
         if imgui.Button("Print Unlooted\nCorpses") then
             self.executeReportUnlootedCorpses()
         end
+
+        if imgui.Button("Show Upgrade for Selected Item") then
+            if lootManager.listboxSelectedOption == nil or lootManager.listboxSelectedOption.itemName == nil then
+                print("You must select an item")
+            else
+                mq.cmdf("/dgga /mlpu \"%s\"", lootManager.listboxSelectedOption.itemName)
+            end
+        end
+        
         imgui.EndGroup()
         ImGui.SetWindowFontScale(1.0)
     end
