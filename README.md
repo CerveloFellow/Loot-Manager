@@ -23,12 +23,13 @@ ProFusion Loot Manager eliminates the tedious process of manually looting corpse
 ## Installation
 
 1. **Clone or Download** this repository
-2. **Place the files** in your MacroQuest `/lua` folder
-3. **Start the script** with:
+2. **Place the MasterLoot.lua file** in your MacroQuest `/lua` folder
+3. **Install all of the modules files** in a lua/modules/ folder
+4. **Start the script** with:
    ```
    /lua run MasterLoot
    ```
-4. On first run, a configuration file (`MasterLoot.ini`) will be created with default settings
+5. On first run, a configuration file (`MasterLoot.ini`) will be created with default settings
 
 ---
 
