@@ -90,6 +90,9 @@ LootSingleMinValue=500
 
 ### Main Window Controls
 
+### Character Radio Button ###
+- The color of the character represents the precent of corpses the character has unlooted(White=0%, Yellow=1% to 33%, Orange=34% to 66%, Red=67% to 100%)
+  
 #### **Loot Button**
 - Select a group member using the radio buttons
 - Click "Loot" to have that character loot all unlooted corpses
@@ -113,53 +116,38 @@ LootSingleMinValue=500
 - Reloads the INI file without restarting the script
 - Useful when you modify settings on the fly
 
-#### **Use Warp / Use Nav Toggle**
-- Manually toggle between Warp and Nav movement modes
-- Overrides the `useWarp` setting in the INI file temporarily
-
+#### **Everyone Loot**
+- All characters will start looting
+- 
 #### **Clear Shared List**
 - Clears all items from the Loot Window
 - Use this to reset the shared item list
+- Clears all upgrade items from the characters upgrade list
 
+#### **Print Item Links**
+- Clicking this button will print out links in /g for all items that are in the shared window
+- After all of the items are printed, all characters will print out to /g the items that are upgrades for the, the slot they are upgraded and the percent that the item is better than the currently equipped item
+
+#### **Print Unlooted Corpses**
+- Pressing this button will show the number of unlooted corpses for any characters.  Characters with zero unlooted corpses will not respond.
+
+#### **Show Upgrade for Selected Item**
+- If you have an item from the shared list selected and press this button, if the item is an upgrade for a character, they will respond with the item name, slot and percent that the item is better
 ---
 
 ## Workflow Example
 
 **After clearing a group of mobs:**
 
-1. **Start with your main character:**
-   - Select your driver/main character
-   - Click "Loot"
-   - Wait for looting to complete
+1. **Have Everyone Loot Until All Corpses are Looted:**
+   - I usually start with having everyone loot.  Corpse looting is buggy, and characters often can't loot a corpse on the first attempt.  Use Everyone Loot or select a character to loot until everyone has looted all corpses.
+   - A character will not know if an item is an upgrade unless they've come across it while looting, so it's important that all characters have looted all corpses if you want the upgrade to work correctly.
 
-2. **Proceed through other characters:**
-   - Select the next character
-   - Click "Loot"
-   - Repeat for each character
-   - *(Optional: Run multiple characters simultaneously, though this increases the chance of corpse window errors)*
-
-3. **Handle shared items:**
-   - Review items in the Loot Window (items other group members can use)
-   - For each item:
-     - Select the appropriate character
-     - Select the item from the list
-     - Click "Queue Shared Item"
-   - Once all items are assigned:
-     - Select a character
-     - Click "Get Shared Item(s)"
-     - Repeat for all characters with queued items
-
-4. **Verify completion:**
-   - Use `/g mlru` to check for unlooted corpses across all characters
-   - Manually handle any problematic corpses if needed
-
----
-
-## Chat Commands
-
-| Command | Description |
-|---------|-------------|
-| `/g mlru` | Reports unlooted corpse count for each group member |
+2. **Handle shared items:**
+   - Print item links or select an individual item to have characters respond if the item is an upgrade for them
+   - Assign the item to a character by selecting the character(radio button) and the item(list box window)
+   - You can assign multiple items to a character before sending them off to loot them.
+   - Once all the items you want to loot have been queued up, click the Get Shared Item(s) link to direct that character to loot the item.
 
 ---
 
@@ -177,44 +165,16 @@ LootSingleMinValue=500
 ### Duplicate Shared Items
 When a single corpse contains multiple instances of the same item that can be used by group members, only one instance appears in the Loot Window due to ImGui Listbox limitations.
 
-**Planned Fix:** Implement an internal item list with unique IDs for each item instance.
+### Some items report twice
+There's a bug I'm working on where a character incorrectly reports which corpse the item is on, and the item shows up in the list box twice on different corpses.  
 
 ### Corpse Window Access
-Characters occasionally fail to open corpse windows despite #corpsefix commands and retry logic.
+Characters occasionally fail to open corpse windows despite #corpsefix commands and retry logic.  #corpsefix is used on retries but this can be annoying when all characters are looting, so I've toned down how much it's used.
 
-**Workarounds:**
-- Check unlooted corpses: `/g mlru`
-- Manual looting: `/target t <corpseId>`, `/warp t`, `/loot`
-- Retry the Loot or Get Shared Item(s) command
-- For detailed info: `/ti` (shows unlooted corpses for that character)
+### Shared Items
+Shared items are not removed from all windows when they are assigned from one character via the Queue button.  Assigning the item removes the item from whoever clicked the button, but does not remove it from the other characters window.
 
-### Looting Reliability
-Corpse interaction can be inconsistent due to game mechanics and timing issues. The script includes retry logic and error handling, but manual intervention may occasionally be needed.
-
----
-
-## Troubleshooting
-
-**Script won't start:**
-- Ensure INI file exists (run once to auto-generate)
-- Check MacroQuest Lua folder path
-- Verify file permissions
-
-**Characters won't loot:**
-- Verify movement plugin (Warp or Nav) is loaded
-- Check `useWarp` setting matches your plugin
-- Ensure characters are in the same zone
-- Try toggling Warp/Nav mode
-
-**Items not appearing in Loot Window:**
-- Verify item is not in ItemsToIgnore
-- Check if item meets value thresholds
-- Reload INI file if recently modified
-
-**Corpse can't be opened:**
-- Use `/g mlru` to identify problematic corpses
-- Try manual looting commands
-- Re-run the Loot command for that character
+The upgrade list for characters does not clear out an item that has been looted until you press the Clear button.
 
 ---
 
@@ -224,10 +184,9 @@ This is an **active development project**. While functional, expect occasional b
 
 ### Planned Features
 - Enhanced duplicate item handling
-- Improved corpse access reliability
-- Additional filtering options
-- Performance optimizations
-
+- Removing items from all list boxes when queued
+- Removing items from all upgradeLists when someone loots the item
+  
 ---
 
 ## Feedback & Contributions
@@ -238,12 +197,6 @@ Contributions, bug reports, and feature requests are welcome!
 - **Contributions:** Fork the repository and submit pull requests
 
 If you're comfortable with Lua and want to contribute directly, contact the repository owner for access.
-
----
-
-## License
-
-This project is provided as-is for the MacroQuest community. Use at your own risk.
 
 ---
 
