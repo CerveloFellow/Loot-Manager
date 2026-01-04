@@ -44,9 +44,9 @@ Items in this section are **always looted** by any character using Master or Pee
 
 ```ini
 [ItemsToKeep]
-Diamond=1
-Blue Diamond=1
-Platinum Fire Wedding Ring=1
+Item1=Diamond
+Item2=Blue Diamond
+Item3=Platinum Fire Wedding Ring
 ```
 
 #### **[ItemsToShare]**
@@ -54,8 +54,8 @@ Items in this section are **never auto-looted**. They appear in the Loot Window 
 
 ```ini
 [ItemsToShare]
-Fishbone Earring=1
-Scimitar of the Ykesha=1
+Item1=Fishbone Earring
+Item2=Scimitar of the Ykesha
 ```
 
 #### **[ItemsToIgnore]**
@@ -63,8 +63,8 @@ Items in this section are **completely ignored** and will never be looted or dis
 
 ```ini
 [ItemsToIgnore]
-Cloth Cap=1
-Rusty Dagger=1
+Item1=Cloth Cap
+Item2=Rusty Dagger
 ```
 
 #### **[Settings]**
