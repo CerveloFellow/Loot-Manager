@@ -24,7 +24,7 @@ ProFusion Loot Manager eliminates the tedious process of manually looting corpse
 
 1. **Clone or Download** this repository
 2. **Place the MasterLoot.lua file** in your MacroQuest `/lua` folder
-3. **Install all of the modules files** in a lua/modules/ folder
+3. **Install all of the module files** in a `lua/modules/` folder
 4. **Start the script** with:
    ```
    /lua run MasterLoot
@@ -90,8 +90,12 @@ LootSingleMinValue=500
 
 ### Main Window Controls
 
-### Character Radio Button ###
-- The color of the character represents the precent of corpses the character has unlooted(White=0%, Yellow=1% to 33%, Orange=34% to 66%, Red=67% to 100%)
+#### **Character Radio Buttons**
+- The color of each character represents the percentage of corpses the character has not looted:
+  - **White** = 0%
+  - **Yellow** = 1% to 33%
+  - **Orange** = 34% to 66%
+  - **Red** = 67% to 100%
   
 #### **Loot Button**
 - Select a group member using the radio buttons
@@ -117,37 +121,38 @@ LootSingleMinValue=500
 - Useful when you modify settings on the fly
 
 #### **Everyone Loot**
-- All characters will start looting
-- 
+- All characters will start looting simultaneously
+
 #### **Clear Shared List**
 - Clears all items from the Loot Window
 - Use this to reset the shared item list
-- Clears all upgrade items from the characters upgrade list
+- Clears all upgrade items from the characters' upgrade list
 
 #### **Print Item Links**
-- Clicking this button will print out links in /g for all items that are in the shared window
-- After all of the items are printed, all characters will print out to /g the items that are upgrades for the, the slot they are upgraded and the percent that the item is better than the currently equipped item
+- Clicking this button will print out links in `/g` (group chat) for all items that are in the shared window
+- After all items are printed, all characters will print to `/g` the items that are upgrades for them, the slot they upgrade, and the percentage that the item is better than the currently equipped item
 
 #### **Print Unlooted Corpses**
-- Pressing this button will show the number of unlooted corpses for any characters.  Characters with zero unlooted corpses will not respond.
+- Pressing this button will show the number of unlooted corpses for any characters. Characters with zero unlooted corpses will not respond.
 
 #### **Show Upgrade for Selected Item**
-- If you have an item from the shared list selected and press this button, if the item is an upgrade for a character, they will respond with the item name, slot and percent that the item is better
+- If you have an item from the shared list selected and press this button, characters who would receive an upgrade will respond with the item name, slot, and the percentage that the item is better
+
 ---
 
 ## Workflow Example
 
 **After clearing a group of mobs:**
 
-1. **Have Everyone Loot Until All Corpses are Looted:**
-   - I usually start with having everyone loot.  Corpse looting is buggy, and characters often can't loot a corpse on the first attempt.  Use Everyone Loot or select a character to loot until everyone has looted all corpses.
-   - A character will not know if an item is an upgrade unless they've come across it while looting, so it's important that all characters have looted all corpses if you want the upgrade to work correctly.
+1. **Have Everyone Loot Until All Corpses Are Looted:**
+   - I usually start by having everyone loot. Corpse looting is buggy, and characters often can't loot a corpse on the first attempt. Use "Everyone Loot" or select individual characters to loot until everyone has looted all corpses.
+   - A character will not know if an item is an upgrade unless they've encountered it while looting, so it's important that all characters have looted all corpses if you want the upgrade feature to work correctly.
 
-2. **Handle shared items:**
+2. **Handle Shared Items:**
    - Print item links or select an individual item to have characters respond if the item is an upgrade for them
-   - Assign the item to a character by selecting the character(radio button) and the item(list box window)
-   - You can assign multiple items to a character before sending them off to loot them.
-   - Once all the items you want to loot have been queued up, click the Get Shared Item(s) link to direct that character to loot the item.
+   - Assign the item to a character by selecting the character (radio button) and the item (list box window)
+   - You can assign multiple items to a character before sending them off to loot
+   - Once all the items you want to loot have been queued up, click the "Get Shared Item(s)" button to direct that character to loot the items
 
 ---
 
@@ -165,14 +170,14 @@ LootSingleMinValue=500
 ### Duplicate Shared Items
 When a single corpse contains multiple instances of the same item that can be used by group members, only one instance appears in the Loot Window due to ImGui Listbox limitations.
 
-### Some items report twice
-There's a bug I'm working on where a character incorrectly reports which corpse the item is on, and the item shows up in the list box twice on different corpses.  
+### Some Items Report Twice
+There's a bug I'm working on where a character incorrectly reports which corpse the item is on, and the item shows up in the list box twice on different corpses.
 
 ### Corpse Window Access
-Characters occasionally fail to open corpse windows despite #corpsefix commands and retry logic.  #corpsefix is used on retries but this can be annoying when all characters are looting, so I've toned down how much it's used.
+Characters occasionally fail to open corpse windows despite `#corpsefix` commands and retry logic. `#corpsefix` is used on retries, but this can be annoying when all characters are looting, so I've reduced how frequently it's used.
 
 ### Shared Items
-Shared items are not removed from all windows when they are assigned from one character via the Queue button.  Assigning the item removes the item from whoever clicked the button, but does not remove it from the other characters window.
+Shared items are not removed from all windows when they are assigned from one character via the Queue button. Assigning the item removes it from whoever clicked the button but does not remove it from other characters' windows.
 
 The upgrade list for characters does not clear out an item that has been looted until you press the Clear button.
 
@@ -185,7 +190,7 @@ This is an **active development project**. While functional, expect occasional b
 ### Planned Features
 - Enhanced duplicate item handling
 - Removing items from all list boxes when queued
-- Removing items from all upgradeLists when someone loots the item
+- Removing items from all upgrade lists when someone loots the item
   
 ---
 
