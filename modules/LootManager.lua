@@ -129,6 +129,8 @@ end
                 mq.cmdf("/say #corpsefix")
                 mq.delay(500)
                 Navigation.navigateToCorpse(corpseObject.ID)
+                mq.delay(300)
+                mq.cmdf("/loot")
                 retryCount = retryCount + 1
                 
                 if mq.TLO.Window("LootWnd").Open() then
