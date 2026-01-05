@@ -133,12 +133,12 @@ end
                 retryCount = retryCount + 1
                 
                 if mq.TLO.Window("LootWnd").Open() then
+                    print("Retry looting corpse succeeded")
                     break
                 end
             end
             
             if retryCount >= maxRetries and not mq.TLO.Window("LootWnd").Open() then
-                print("Retry looting corpse succeeded")
                 return
             end
         end
