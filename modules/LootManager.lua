@@ -172,7 +172,16 @@ end
                    (not itemEvaluator.skipItem(config, utils, corpseItem)) then
                     mq.cmdf("/g Shared Item: "..corpseItem.ItemLink('CLICKABLE')())
                     
-                    -- Broadcast to group
+                    -- FIXED: Add to local list first (works for solo and grouped)
+                    local sharedItemMessage = {
+                        corpseId = actualCorpseId,
+                        itemId = corpseItem.ID(),
+                        itemName = corpseItem.Name(),
+                        itemLink = corpseItem.ItemLink('CLICKABLE')()
+                    }
+                    self.handleSharedItem(sharedItemMessage)
+                    
+                    -- Broadcast to group (if in group)
                     actorManager.broadcastShareItem(
                         actualCorpseId,
                         corpseItem.ID(), 
@@ -218,21 +227,13 @@ end
                             print(string.format("DEBUG: Added new upgrade entry for %s: %.1f%% for %s", 
                                 corpseItem.Name(), newUpgrade.improvement, newUpgrade.slotName))
                         end
-                        
-                        print(string.format("%s is a %.1f%% upgrade for %s", 
-                            corpseItem.Name(), upgradeInfo.improvement, upgradeInfo.slotName))
                     end
                 end
-            end
-            
-            if mq.TLO.Cursor then
-                mq.cmdf("/autoinventory")
             end
         end
         
         table.insert(self.lootedCorpses, actualCorpseId)
         self.closeLootWindow()
-        return true
     end
     
     function self.openCorpse(corpseId)

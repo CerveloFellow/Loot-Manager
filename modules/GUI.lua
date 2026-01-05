@@ -159,6 +159,12 @@ function GUI.new(lootManager, actorManager)
     function self.renderActionButtons()
         ImGui.SetWindowFontScale(0.7)
         
+        imgui.SameLine()
+        if imgui.Button("Everyone Loot") then
+            self.everyoneLoot()
+        end
+
+        imgui.SameLine()
         if imgui.Button("Loot") then
             self.executePeerLoot()
         end
@@ -171,16 +177,6 @@ function GUI.new(lootManager, actorManager)
         imgui.SameLine()
         if imgui.Button("Get Shared Item(s)") then
             self.executeLootItems()
-        end
-        
-        imgui.SameLine()
-        if imgui.Button("Reload INI") then
-            mq.cmdf("/mlrc")
-        end
-
-        imgui.SameLine()
-        if imgui.Button("Everyone Loot") then
-            self.everyoneLoot()
         end
 
         imgui.SameLine()
@@ -195,42 +191,63 @@ function GUI.new(lootManager, actorManager)
         ImGui.SetWindowFontScale(1.0)
     end
     
-    function self.renderGroupMemberSelection()
-        local groupSize = (mq.TLO.Group.GroupSize() or 0) - 1
+function self.renderGroupMemberSelection()
+    local groupSize = (mq.TLO.Group.GroupSize() or 0) - 1
+    local myName = mq.TLO.Me.Name()
 
-        if groupSize >= 0 then
-            for i = 0, groupSize do
-                local memberName = mq.TLO.Group.Member(i).Name()
-                local isActive = (self.radioSelectedOption == i)
-                
-                -- Get color based on corpse status
-                local r, g, b, a = self.getCorpseStatusColor(memberName)
-                
-                ImGui.SetWindowFontScale(0.7)
-                imgui.PushStyleColor(ImGuiCol.Text, r, g, b, a)
-                
-                if imgui.RadioButton(memberName, isActive) then
-                    self.radioSelectedOption = i
-                    self.groupMemberSelected = memberName
-                end
-                
-                imgui.PopStyleColor()
-                ImGui.SetWindowFontScale(1.0)
-                
-                if i < groupSize then
-                    imgui.SameLine()
-                end
+    -- If not grouped, show only self
+    if groupSize < 0 then
+        local isActive = (self.radioSelectedOption == 0)
+        
+        -- Get color based on corpse status
+        local r, g, b, a = self.getCorpseStatusColor(myName)
+        
+        ImGui.SetWindowFontScale(0.7)
+        imgui.PushStyleColor(ImGuiCol.Text, r, g, b, a)
+        
+        if imgui.RadioButton(myName, isActive) then
+            self.radioSelectedOption = 0
+            self.groupMemberSelected = myName
+        end
+        
+        imgui.PopStyleColor()
+        ImGui.SetWindowFontScale(1.0)
+    else
+        -- Show all group members
+        for i = 0, groupSize do
+            local memberName = mq.TLO.Group.Member(i).Name()
+            local isActive = (self.radioSelectedOption == i)
+            
+            -- Get color based on corpse status
+            local r, g, b, a = self.getCorpseStatusColor(memberName)
+            
+            ImGui.SetWindowFontScale(0.7)
+            imgui.PushStyleColor(ImGuiCol.Text, r, g, b, a)
+            
+            if imgui.RadioButton(memberName, isActive) then
+                self.radioSelectedOption = i
+                self.groupMemberSelected = memberName
+            end
+            
+            imgui.PopStyleColor()
+            ImGui.SetWindowFontScale(1.0)
+            
+            if i < groupSize then
+                imgui.SameLine()
             end
         end
     end
+end
     
-function self.renderItemListBox()
+    function self.renderItemListBox()
         imgui.SetNextItemWidth(300)
 
-        local itemHeight = imgui.GetTextLineHeightWithSpacing()
-        local height = -itemHeight*2
-
-        if imgui.BeginListBox("", 0, height) then
+        -- Calculate available height for the listbox
+        local windowHeight = imgui.GetWindowHeight()
+        local cursorY = imgui.GetCursorPosY()
+        local availableHeight = windowHeight - cursorY - 20  -- Reserve 20 pixels for padding at bottom
+        
+        if imgui.BeginListBox("", ImVec2(0,125)) then
             for idx, items in pairs(lootManager.multipleUseTable) do
                 for idx2, tbl in ipairs(items) do
                     local isSelected = false
@@ -269,7 +286,7 @@ function self.renderItemListBox()
             self.executeReportUnlootedCorpses()
         end
 
-        if imgui.Button("Show Upgrade for Selected Item") then
+        if imgui.Button("Show Upgrades") then
             if lootManager.listboxSelectedOption == nil or lootManager.listboxSelectedOption.itemName == nil then
                 print("You must select an item")
             else
@@ -288,7 +305,7 @@ function self.renderItemListBox()
         return function(open)
             local main_viewport = imgui.GetMainViewport()
             imgui.SetNextWindowPos(main_viewport.WorkPos.x + 800, main_viewport.WorkPos.y + 20, ImGuiCond.Once)
-            imgui.SetNextWindowSize(475, 245, ImGuiCond.Always)
+            imgui.SetNextWindowSize(425, 225, ImGuiCond.Always)
             
             local show
             open, show = imgui.Begin("Master Looter", open)
