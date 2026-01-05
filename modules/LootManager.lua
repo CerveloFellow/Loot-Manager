@@ -128,7 +128,7 @@ end
             while retryCount < maxRetries do
                 mq.cmdf("/say #corpsefix")
                 mq.delay(500)
-                Navigation.navigateToCorpse(corpseObject.ID)
+                navigation.navigateToCorpse(corpseObject.ID)
                 mq.cmdf("/loot")
                 retryCount = retryCount + 1
                 
@@ -455,4 +455,5 @@ end
 end
 
 return LootManager
+
 
