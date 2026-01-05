@@ -402,7 +402,7 @@ end
             currentCorpse, corpseTable = corpseManager.getRandomCorpse(corpseTable)
             
             if currentCorpse and not self.isLooted(currentCorpse.ID) then
-                local navSuccess = navigation.navigateToCorpse(currentCorpse.ID)
+                local navSuccess = navigation.navigateToCorpse(config, currentCorpse.ID)
                 
                 if navSuccess then
                     if config.useWarp then

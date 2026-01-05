@@ -19,7 +19,7 @@ function Navigation.navigateToLocation(config, x, y, z)
     return true
 end
 
-function Navigation.navigateToCorpse(corpseId)
+function Navigation.navigateToCorpse(config, corpseId)
     if not corpseId then
         print("ERROR: Invalid corpseId: "..tostring(corpseId))
         return false
