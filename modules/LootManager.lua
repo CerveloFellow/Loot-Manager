@@ -128,7 +128,7 @@ end
             while retryCount < maxRetries do
                 mq.cmdf("/say #corpsefix")
                 mq.delay(500)
-                mq.cmdf("/warp loc %f %f %f", corpseObject.Y, corpseObject.X, corpseObject.Z)
+                Navigation.navigateToCorpse(corpseObject.ID)
                 retryCount = retryCount + 1
                 
                 if mq.TLO.Window("LootWnd").Open() then
@@ -402,12 +402,7 @@ end
             currentCorpse, corpseTable = corpseManager.getRandomCorpse(corpseTable)
             
             if currentCorpse and not self.isLooted(currentCorpse.ID) then
-                local navSuccess = navigation.navigateToLocation(
-                    config,
-                    currentCorpse.X,
-                    currentCorpse.Y,
-                    currentCorpse.Z
-                )
+                local navSuccess = navigation.navigateToCorpse(currentCorpse.ID)
                 
                 if navSuccess then
                     if config.useWarp then

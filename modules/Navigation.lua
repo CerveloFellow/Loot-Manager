@@ -19,4 +19,23 @@ function Navigation.navigateToLocation(config, x, y, z)
     return true
 end
 
+function Navigation.navigateToCorpse(corpseId)
+    if not corpseId then
+        print("ERROR: Invalid corpseId: "..tostring(corpseId))
+        return false
+    else
+        if config.useWarp then
+            mq.cmdf("/target id %d", corpseId)
+            mq.delay(100)
+            mq.cmdf("/warp t")
+        else
+            mq.cmdf("/target id %d", corpseId)
+            mq.delay(100)
+            mq.cmdf("/navigate Target")
+        end
+    end
+
+    return true
+end
+
 return Navigation
