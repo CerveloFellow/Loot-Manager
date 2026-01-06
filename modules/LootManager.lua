@@ -17,7 +17,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         navigation = navigation,
         actorManager = actorManager,
         itemScore = itemScore,  -- NEW: ItemScore module
-        debugEnabled = true,  -- Toggle for debug printing
+        debugEnabled = false,  -- Toggle for debug printing
         delays = {
             windowClose = 50,
             itemLoot = 250,
@@ -245,7 +245,8 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         self.debugPrint(string.format("Corpse has %d items", itemCount))
         
         if itemCount == 0 then
-            self.debugPrint("No items in corpse")
+            self.debugPrint(string.format("Corpse %s has no items (already looted by another player), marking as looted", actualCorpseId))
+            table.insert(self.lootedCorpses, actualCorpseId)
             self.closeLootWindow()
             return
         end
@@ -480,39 +481,77 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         mq.delay(self.delays.stickOff)
         
-        local corpseTable = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")())
-        self.debugPrint(string.format("Found %d corpses in range", #corpseTable))
+        -- VERBOSE DEBUG: Track SpawnCount vs corpseTable
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")()
+        self.debugPrint(string.format("========================================"))
+        self.debugPrint(string.format("STARTING CORPSE SCAN"))
+        self.debugPrint(string.format("SpawnCount query returned: %d", spawnCount))
+        
+        local corpseTable = corpseManager.getCorpseTable(spawnCount)
+        
+        self.debugPrint(string.format("========================================"))
+        self.debugPrint(string.format("CORPSE TABLE BUILT"))
+        self.debugPrint(string.format("SpawnCount said: %d corpses exist", spawnCount))
+        self.debugPrint(string.format("Table contains:  %d corpses", #corpseTable))
+        if spawnCount ~= #corpseTable then
+            self.debugPrint(string.format("⚠ MISMATCH: %d corpses were filtered out!", spawnCount - #corpseTable))
+        end
+        self.debugPrint(string.format("========================================"))
+
+        local corpsesProcessed = 0
+        local corpsesLooted = 0
+        local corpsesDespawned = 0
+        local corpsesSkipped = 0
 
         while #corpseTable > 0 do
             local currentCorpse
-            self.debugPrint(string.format("Corpses Remaining: %d", #corpseTable))
+            self.debugPrint(string.format("Corpses Remaining in table: %d", #corpseTable))
             currentCorpse, corpseTable = corpseManager.getRandomCorpse(corpseTable)
             
             if currentCorpse and currentCorpse.ID and not self.isLooted(currentCorpse.ID) then
+                corpsesProcessed = corpsesProcessed + 1
+                
                 -- OPTIMIZATION: Check if corpse still exists before attempting to loot
                 -- This prevents wasting time on corpses that despawned (were looted by others)
                 if not self.corpseStillExists(currentCorpse.ID) then
+                    corpsesDespawned = corpsesDespawned + 1
                     self.debugPrint(string.format("Corpse ID %s no longer exists (despawned), skipping", currentCorpse.ID))
                     -- Mark as looted so we don't try again
                     table.insert(self.lootedCorpses, currentCorpse.ID)
                     goto continue
                 end
                 
-                self.debugPrint(string.format("Processing corpse ID: %s", currentCorpse.ID))
+                self.debugPrint(string.format("Processing corpse ID: %s (Processed: %d, Looted: %d, Despawned: %d)", 
+                    currentCorpse.ID, corpsesProcessed, corpsesLooted, corpsesDespawned))
                 local navSuccess = navigation.navigateToCorpse(self.config, currentCorpse.ID)
                 
                 if navSuccess then
                     self.debugPrint("Successfully navigated to corpse")
-                    self.lootCorpse(currentCorpse, isMaster)
+                    local lootSuccess = self.lootCorpse(currentCorpse, isMaster)
+                    if lootSuccess ~= false then  -- nil or true = success
+                        corpsesLooted = corpsesLooted + 1
+                    end
                 else
                     self.debugPrint(string.format("Failed to navigate to corpse ID: %s", tostring(currentCorpse.ID)))
                 end
             else
-                self.debugPrint("Corpse already looted or invalid")
+                corpsesSkipped = corpsesSkipped + 1
+                self.debugPrint(string.format("Corpse already looted or invalid (skipped count: %d)", corpsesSkipped))
             end
             
             ::continue::
         end
+        
+        self.debugPrint("========================================")
+        self.debugPrint("LOOTING SESSION COMPLETE")
+        self.debugPrint(string.format("Initial SpawnCount:      %d", spawnCount))
+        self.debugPrint(string.format("Corpses in table:        %d", spawnCount - (spawnCount - #corpseTable)))
+        self.debugPrint(string.format("Corpses processed:       %d", corpsesProcessed))
+        self.debugPrint(string.format("Corpses looted:          %d", corpsesLooted))
+        self.debugPrint(string.format("Corpses despawned:       %d", corpsesDespawned))
+        self.debugPrint(string.format("Corpses skipped:         %d", corpsesSkipped))
+        self.debugPrint(string.format("Unaccounted for:         %d", spawnCount - corpsesLooted - corpsesDespawned - corpsesSkipped))
+        self.debugPrint("========================================")
         
         self.debugPrint("Returning to starting location")
         navigation.navigateToLocation(self.config, startingLocation.X, startingLocation.Y, startingLocation.Z)
