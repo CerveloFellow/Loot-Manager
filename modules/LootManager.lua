@@ -122,18 +122,18 @@ end
         mq.delay("5s", function() return mq.TLO.Window("LootWnd").Open() end)
         
         local retryCount = 0
-        local maxRetries = 1
+        local maxRetries = 3
 
         if (not mq.TLO.Window("LootWnd").Open()) then
             while retryCount < maxRetries do
                 mq.cmdf("/say #corpsefix")
-                mq.delay(500)
+                mq.delay("2s")
                 navigation.navigateToCorpse(self.config, corpseObject.ID)
                 mq.cmdf("/loot")
+                mq.delay(300)
                 retryCount = retryCount + 1
                 
                 if mq.TLO.Window("LootWnd").Open() then
-                    print("Retry looting corpse succeeded")
                     break
                 end
             end
