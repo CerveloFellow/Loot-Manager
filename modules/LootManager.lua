@@ -247,20 +247,7 @@ end
             return false
         end
         
-        local targetX = mq.TLO.Target.X()
-        local targetY = mq.TLO.Target.Y()
-        local targetZ = mq.TLO.Target.Z()
-        
-        if not targetX or not targetY or not targetZ then
-            print("ERROR: Target coordinates are invalid for corpse ID: " .. tostring(corpseId))
-            return false
-        end
-
-        if config.useWarp then
-            mq.cmdf("/warp loc %f %f %f", targetY, targetX, targetZ)
-        else
-            mq.cmdf("/squelch /nav target")
-        end
+        navigation.navigateToCorpse(self.config, corpseId)
         
         mq.delay(300)
         mq.cmdf("/loot")
@@ -269,24 +256,14 @@ end
         local retryMax = 5
 
         while not mq.TLO.Window("LootWnd").Open() and (retryCount < retryMax) do
-            mq.cmdf("/say #corpsefix")
-            mq.delay(300)
-            
-            targetX = mq.TLO.Target.X()
-            targetY = mq.TLO.Target.Y()
-            targetZ = mq.TLO.Target.Z()
-            
-            if not targetX or not targetY or not targetZ then
-                print("ERROR: Lost target during retry for corpse ID: " .. tostring(corpseId))
-                return false
+            if retryCount > 3 then
+                mq.cmdf("/say #corpsefix")
             end
-            
-            if config.useWarp then
-                mq.cmdf("/warp loc %f %f %f", targetY, targetX, targetZ)
-            else
-                mq.cmdf("/squelch /nav target")
-            end
-            mq.delay(300)
+            mq.delay("1s")  
+            navigation.navigateToCorpse(self.config, corpseId)
+            mq.delay(250) 
+            mq.cmdf("/loot")
+            mq.delay(250)
             retryCount = retryCount + 1
         end
 
