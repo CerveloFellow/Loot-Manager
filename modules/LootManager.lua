@@ -17,7 +17,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         navigation = navigation,
         actorManager = actorManager,
         itemScore = itemScore,  -- NEW: ItemScore module
-        debugEnabled = true,  -- Toggle for debug printing
+        debugEnabled = false,  -- Toggle for debug printing
         delays = {
             windowClose = 50,
             itemLoot = 250,
@@ -906,5 +906,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     
     return self
 end
+
 
 return LootManager
