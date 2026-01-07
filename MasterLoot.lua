@@ -10,7 +10,7 @@ local Navigation = require('modules/Navigation')
 local ItemEvaluator = require('modules/ItemEvaluator')
 local CorpseManager = require('modules/CorpseManager')
 local ActorManager = require('modules/ActorManager')
-local ItemScore = require('modules/ItemScore')  -- NEW
+local ItemScore = require('modules/ItemScore')
 local LootManagerModule = require('modules/LootManager')
 local CommandsModule = require('modules/Commands')
 local GUIModule = require('modules/GUI')
@@ -34,7 +34,7 @@ local LootManager = LootManagerModule.new(
     CorpseManager,
     Navigation,
     ActorManager,
-    ItemScore  -- NEW: Pass ItemScore module
+    ItemScore
 )
 
 -- Initialize Actor System
@@ -51,8 +51,8 @@ local Commands = CommandsModule.new(
     INIManager
 )
 
--- Initialize GUI
-local GUI = GUIModule.new(LootManager, ActorManager)
+-- Initialize GUI (now with Utils for lore checking)
+local GUI = GUIModule.new(LootManager, ActorManager, Utils)
 
 -- Register corpse stats handler
 ActorManager.setHandleCorpseStats(GUI.handleCorpseStats)
@@ -70,10 +70,12 @@ mq.bind("/tis", Commands.testShared)
 mq.bind("/mlrc", Commands.reloadConfig)
 mq.bind("/mlru", Commands.reportUnlootedCorpses)
 mq.bind("/mlpm", LootManager.printMultipleUseItems)
-mq.bind("/mlpu", LootManager.printUpgradeList)  -- NEW: Print upgrades command
+mq.bind("/mlpu", LootManager.printUpgradeList)
 
 -- Register events
-mq.event('peerLootItem', "#*#mlqi #1# #2# #3#'", LootManager.queueItem)
+-- Updated pattern: mlqi <memberName> <corpseId> <itemId> "<itemName>" <isLore>
+-- Item name is quoted to handle spaces
+mq.event('peerLootItem', '#*#mlqi #1# #2# #3# "#4#" #5#', LootManager.queueItem)
 mq.event('reportUnlooted', '#*#mlru#*#', Commands.reportUnlootedCorpses)
 
 -- Register GUI
