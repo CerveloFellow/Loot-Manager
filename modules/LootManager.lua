@@ -17,7 +17,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         navigation = navigation,
         actorManager = actorManager,
         itemScore = itemScore,  -- NEW: ItemScore module
-        debugEnabled = false,  -- Toggle for debug printing
+        debugEnabled = true,  -- Toggle for debug printing
         delays = {
             windowClose = 50,
             itemLoot = 250,
@@ -81,14 +81,16 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
 
     function self.handleSharedItem(message)
         -- Debug: Log raw message types to detect serialization issues
-        self.debugPrint(string.format("Received shared item message - Raw types: corpseId=%s (%s), itemId=%s (%s)", 
+        self.debugPrint(string.format("Received shared item message - Raw types: corpseId=%s (%s), itemId=%s (%s), count=%s", 
             tostring(message.corpseId), type(message.corpseId),
-            tostring(message.itemId), type(message.itemId)))
+            tostring(message.itemId), type(message.itemId),
+            tostring(message.count)))
         
         -- Normalize corpseId and itemId to numbers to prevent type mismatch issues
         -- Actor serialization can sometimes convert numbers to strings
         local normalizedCorpseId = tonumber(message.corpseId)
         local normalizedItemId = tonumber(message.itemId)
+        local normalizedCount = tonumber(message.count) or 1
         
         -- Debug: Warn if type conversion was needed
         if type(message.corpseId) ~= "number" then
@@ -100,30 +102,34 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 type(message.itemId), normalizedItemId))
         end
         
-        self.debugPrint(string.format("Handling shared item: %s (ID: %s) from corpse %s", 
-            message.itemName, normalizedItemId, normalizedCorpseId))
+        self.debugPrint(string.format("Handling shared item: %s (ID: %s) from corpse %s, isLore: %s, count: %d", 
+            message.itemName, normalizedItemId, normalizedCorpseId, tostring(message.isLore), normalizedCount))
         
         local item = {
             corpseId = normalizedCorpseId,
             itemId = normalizedItemId,
             itemName = message.itemName,
-            itemLink = message.itemLink
+            itemLink = message.itemLink,
+            isLore = message.isLore or false,
+            count = normalizedCount
         }
 
         if next(self.listboxSelectedOption) == nil then
             self.listboxSelectedOption = {
                 corpseId = normalizedCorpseId,
                 itemId = normalizedItemId,
-                itemName = message.itemName
+                itemName = message.itemName,
+                isLore = message.isLore or false
             }
             self.debugPrint("Set listboxSelectedOption to first shared item")
         end
         
         -- Debug: Log the key being used for multipleUseTable
-        self.debugPrint(string.format("Inserting into multipleUseTable with key: %s (type: %s)", 
-            normalizedCorpseId, type(normalizedCorpseId)))
+        self.debugPrint(string.format("Inserting into multipleUseTable with key: %s (type: %s), count: %d", 
+            normalizedCorpseId, type(normalizedCorpseId), normalizedCount))
         
-        utils.multimapInsert(self.multipleUseTable, normalizedCorpseId, item)
+        local insertResult = utils.multimapInsert(self.multipleUseTable, normalizedCorpseId, item)
+        self.debugPrint(string.format("multimapInsert result: %s", tostring(insertResult)))
     end
     
     -- Debug function to dump the entire multipleUseTable state
@@ -134,11 +140,13 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             self.debugPrint(string.format("  Corpse KEY: %s (type: %s)", tostring(corpseId), type(corpseId)))
             for idx, item in ipairs(items) do
                 totalItems = totalItems + 1
-                self.debugPrint(string.format("    [%d] itemName=%s, itemId=%s (type: %s), item.corpseId=%s (type: %s)", 
+                self.debugPrint(string.format("    [%d] itemName=%s, itemId=%s (type: %s), item.corpseId=%s (type: %s), count=%d, isLore=%s", 
                     idx, 
                     item.itemName, 
                     tostring(item.itemId), type(item.itemId),
-                    tostring(item.corpseId), type(item.corpseId)))
+                    tostring(item.corpseId), type(item.corpseId),
+                    item.count or 1,
+                    tostring(item.isLore)))
                 
                 -- Check for mismatch between key and stored corpseId
                 if corpseId ~= item.corpseId then
@@ -163,7 +171,11 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         mq.cmdf("/g List of items that can be used by members of your group")
         for corpseId, valueList in pairs(self.multipleUseTable) do
             for _, value in ipairs(valueList) do
-                mq.cmdf("/g %s", value.itemLink)
+                local countStr = ""
+                if (value.count or 1) > 1 then
+                    countStr = string.format(" x%d", value.count)
+                end
+                mq.cmdf("/g %s%s", value.itemLink, countStr)
             end
         end
         
@@ -350,110 +362,163 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             return
         end
         
+        -- Get the actual loot window corpse ID (use this for all operations)
+        local actualLootCorpseId = mq.TLO.Corpse.ID() or 0
+        local correctCorpseId = actualLootCorpseId or corpseObject.ID
+        
+        -- SAFETY CHECK: Don't process if corpseId is 0 or nil (corpse despawned)
+        if not correctCorpseId or correctCorpseId == 0 then
+            self.debugPrint("WARNING: Invalid corpseId (0 or nil), skipping corpse")
+            self.closeLootWindow()
+            return
+        end
+        
+        -- PHASE 1: Build temporary table of all items on corpse
+        -- This allows us to count duplicates before broadcasting
+        local tempSharedItems = {}  -- Key: itemId, Value: {item data with count}
+        local itemsToLoot = {}      -- List of {slot, corpseItem} to loot
+        
+        self.debugPrint("=== PHASE 1: Building item inventory ===")
+        
         for i = 1, itemCount do
-            self.checkInventorySpace()
-            
             mq.delay(self.delays.corpseItemWait, function() return mq.TLO.Corpse.Item(i).ID() end)
             local corpseItem = mq.TLO.Corpse.Item(i)
-            local isSharedItem = utils.contains(config.itemsToShare, corpseItem.Name())
-
+            
+            if not corpseItem or not corpseItem.ID() then
+                self.debugPrint(string.format("Slot %d: Invalid item, skipping", i))
+                goto continue_phase1
+            end
+            
+            local itemId = corpseItem.ID()
+            local itemName = corpseItem.Name()
+            local isSharedItem = utils.contains(config.itemsToShare, itemName)
+            
             if itemEvaluator.shouldLoot(config, utils, corpseItem) and (not isSharedItem) then
-                self.debugPrint(string.format("Item %d (%s) should be looted", i, corpseItem.Name()))
-                self.lootItem(corpseItem, i)
-            else
-                if (itemEvaluator.groupMembersCanUse(corpseItem) > 1 or isSharedItem) and 
+                -- Item should be looted by this character
+                self.debugPrint(string.format("Slot %d: %s - will loot", i, itemName))
+                table.insert(itemsToLoot, {slot = i, item = corpseItem})
+            elseif (itemEvaluator.groupMembersCanUse(corpseItem) > 1 or isSharedItem) and 
                    (not itemEvaluator.skipItem(config, utils, corpseItem)) then
-                    self.debugPrint(string.format("Item %d (%s) is a shared item", i, corpseItem.Name()))
-                    mq.cmdf("/g Shared Item: "..corpseItem.ItemLink('CLICKABLE')())
-                    
-                    -- COMPREHENSIVE DEBUG: Log ALL relevant IDs to diagnose mismatch
-                    local actualTargetId = mq.TLO.Target.ID() or 0
-                    local actualLootCorpseId = mq.TLO.Corpse.ID() or 0
-                    
-                    self.debugPrint(string.format("=== SHARED ITEM DEBUG ==="))
-                    self.debugPrint(string.format("  corpseObject.ID (passed in): %s", tostring(corpseObject.ID)))
-                    self.debugPrint(string.format("  mq.TLO.Target.ID() (current target): %s", tostring(actualTargetId)))
-                    self.debugPrint(string.format("  mq.TLO.Corpse.ID() (loot window): %s", tostring(actualLootCorpseId)))
-                    self.debugPrint(string.format("  Item: %s (ID: %s)", corpseItem.Name(), tostring(corpseItem.ID())))
-                    
-                    -- Check for any mismatches
-                    if actualTargetId ~= corpseObject.ID then
-                        self.debugPrint(string.format("  *** MISMATCH: Target changed! Expected %s, got %s", 
-                            corpseObject.ID, actualTargetId))
-                    end
-                    if actualLootCorpseId ~= corpseObject.ID then
-                        self.debugPrint(string.format("  *** MISMATCH: Loot window is for different corpse! Expected %s, got %s", 
-                            corpseObject.ID, actualLootCorpseId))
-                    end
-                    if actualTargetId ~= actualLootCorpseId then
-                        self.debugPrint(string.format("  *** MISMATCH: Target (%s) != Loot window (%s)", 
-                            actualTargetId, actualLootCorpseId))
-                    end
-                    self.debugPrint(string.format("========================="))
-                    
-                    -- FIXED: Use the ACTUAL loot window corpse ID, not the passed-in corpseObject.ID
-                    -- This ensures we record the correct corpse that actually has the item
-                    local correctCorpseId = actualLootCorpseId or corpseObject.ID
-                    
-                    -- SAFETY CHECK: Don't broadcast if corpseId is 0 or nil (corpse despawned)
-                    if not correctCorpseId or correctCorpseId == 0 then
-                        self.debugPrint("WARNING: Invalid corpseId (0 or nil), skipping shared item broadcast")
-                        goto continue_item_loop
-                    end
-                    
-                    -- FIXED: Add to local list first (works for solo and grouped)
-                    local sharedItemMessage = {
-                        corpseId = correctCorpseId,
-                        itemId = corpseItem.ID(),
-                        itemName = corpseItem.Name(),
-                        itemLink = corpseItem.ItemLink('CLICKABLE')()
+                -- Shared item - add to temp table with count
+                if tempSharedItems[itemId] then
+                    -- Duplicate item, increment count
+                    tempSharedItems[itemId].count = tempSharedItems[itemId].count + 1
+                    self.debugPrint(string.format("Slot %d: %s - shared item (duplicate, count now %d)", 
+                        i, itemName, tempSharedItems[itemId].count))
+                else
+                    -- New shared item
+                    tempSharedItems[itemId] = {
+                        itemId = itemId,
+                        itemName = itemName,
+                        itemLink = corpseItem.ItemLink('CLICKABLE')(),
+                        isLore = corpseItem.Lore() or false,
+                        count = 1,
+                        corpseItem = corpseItem  -- Keep reference for upgrade check
                     }
-                    self.handleSharedItem(sharedItemMessage)
-                    
-                    -- Broadcast to group (if in group)
-                    self.debugPrint(string.format("Broadcasting shared item to group: corpseId=%s, itemId=%s", 
-                        correctCorpseId, corpseItem.ID()))
-                    actorManager.broadcastShareItem(
-                        correctCorpseId,
-                        corpseItem.ID(), 
-                        corpseItem.Name(), 
-                        corpseItem.ItemLink('CLICKABLE')()
-                    )
-                    
-                    -- NEW: Check for upgrades
-                    local upgradeInfo = self.itemScore.evaluateItemForUpgrade(corpseItem)
-                    if upgradeInfo then
-                        self.debugPrint(string.format("Item %s is an upgrade: +%.1f%% for %s", 
-                            corpseItem.Name(), upgradeInfo.improvement, upgradeInfo.slotName))
-                        
-                        local found = false
-                        for _, existingUpgrade in ipairs(self.upgradeList) do
-                            if existingUpgrade.corpseId == corpseObject.ID and 
-                               existingUpgrade.itemId == corpseItem.ID() then
-                                existingUpgrade.slotName = upgradeInfo.slotName
-                                existingUpgrade.improvement = upgradeInfo.improvement
-                                self.debugPrint(string.format("Updated existing upgrade entry for %s", corpseItem.Name()))
-                                found = true
-                                break
-                            end
-                        end
-                        
-                        if not found then
-                            local newUpgrade = {
-                                corpseId = corpseObject.ID,
-                                itemId = corpseItem.ID(),
-                                itemName = corpseItem.Name(),
-                                slotName = upgradeInfo.slotName,
-                                improvement = upgradeInfo.improvement
-                            }
-                            table.insert(self.upgradeList, newUpgrade)
-                            self.debugPrint(string.format("Added new upgrade entry for %s: %.1f%% for %s", 
-                                corpseItem.Name(), newUpgrade.improvement, newUpgrade.slotName))
-                        end
+                    self.debugPrint(string.format("Slot %d: %s - shared item (count 1)", i, itemName))
+                end
+            else
+                self.debugPrint(string.format("Slot %d: %s - skipped", i, itemName))
+            end
+            
+            ::continue_phase1::
+        end
+        
+        -- PHASE 2: Loot items that this character should take
+        self.debugPrint("=== PHASE 2: Looting items ===")
+        
+        for _, lootEntry in ipairs(itemsToLoot) do
+            self.checkInventorySpace()
+            self.lootItem(lootEntry.item, lootEntry.slot)
+        end
+        
+        -- PHASE 3: Process and broadcast shared items with counts
+        self.debugPrint("=== PHASE 3: Processing shared items ===")
+        
+        for itemId, sharedItem in pairs(tempSharedItems) do
+            self.debugPrint(string.format("Processing shared item: %s (ID: %d, count: %d, isLore: %s)", 
+                sharedItem.itemName, itemId, sharedItem.count, tostring(sharedItem.isLore)))
+            
+            -- Check if this item is already in multipleUseTable (another character already reported it)
+            local alreadyReported = false
+            if self.multipleUseTable[correctCorpseId] then
+                for _, existingItem in ipairs(self.multipleUseTable[correctCorpseId]) do
+                    if existingItem.itemId == itemId then
+                        alreadyReported = true
+                        self.debugPrint(string.format("Item %s already reported on corpse %s, updating count from %d to %d", 
+                            sharedItem.itemName, correctCorpseId, existingItem.count, sharedItem.count))
+                        -- Update the count to the latest value (last count wins)
+                        existingItem.count = sharedItem.count
+                        break
                     end
                 end
             end
-            ::continue_item_loop::
+            
+            if not alreadyReported then
+                -- First time seeing this item - announce and broadcast
+                if sharedItem.count > 1 then
+                    mq.cmdf("/g Shared Item: %s x%d", sharedItem.itemLink, sharedItem.count)
+                else
+                    mq.cmdf("/g Shared Item: %s", sharedItem.itemLink)
+                end
+                
+                -- Build message for local handling and broadcast
+                local sharedItemMessage = {
+                    corpseId = correctCorpseId,
+                    itemId = itemId,
+                    itemName = sharedItem.itemName,
+                    itemLink = sharedItem.itemLink,
+                    isLore = sharedItem.isLore,
+                    count = sharedItem.count
+                }
+                
+                -- Add to local table
+                self.handleSharedItem(sharedItemMessage)
+                
+                -- Broadcast to group with count
+                self.debugPrint(string.format("Broadcasting shared item to group: corpseId=%s, itemId=%s, count=%d, isLore=%s", 
+                    correctCorpseId, itemId, sharedItem.count, tostring(sharedItem.isLore)))
+                actorManager.broadcastShareItem(
+                    correctCorpseId,
+                    itemId, 
+                    sharedItem.itemName, 
+                    sharedItem.itemLink,
+                    sharedItem.isLore,
+                    sharedItem.count
+                )
+            end
+            
+            -- ALWAYS check for upgrades (even if item was already reported by another character)
+            local upgradeInfo = self.itemScore.evaluateItemForUpgrade(sharedItem.corpseItem)
+            if upgradeInfo then
+                self.debugPrint(string.format("Item %s is an upgrade: +%.1f%% for %s", 
+                    sharedItem.itemName, upgradeInfo.improvement, upgradeInfo.slotName))
+                
+                local found = false
+                for _, existingUpgrade in ipairs(self.upgradeList) do
+                    if existingUpgrade.corpseId == correctCorpseId and 
+                       existingUpgrade.itemId == itemId then
+                        existingUpgrade.slotName = upgradeInfo.slotName
+                        existingUpgrade.improvement = upgradeInfo.improvement
+                        self.debugPrint(string.format("Updated existing upgrade entry for %s", sharedItem.itemName))
+                        found = true
+                        break
+                    end
+                end
+                
+                if not found then
+                    local newUpgrade = {
+                        corpseId = correctCorpseId,
+                        itemId = itemId,
+                        itemName = sharedItem.itemName,
+                        slotName = upgradeInfo.slotName,
+                        improvement = upgradeInfo.improvement
+                    }
+                    table.insert(self.upgradeList, newUpgrade)
+                    self.debugPrint(string.format("Added new upgrade entry for %s: %.1f%% for %s", 
+                        sharedItem.itemName, newUpgrade.improvement, newUpgrade.slotName))
+                end
+            end
         end
         
         table.insert(self.lootedCorpses, corpseObject.ID)
@@ -502,91 +567,98 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         return true
     end
     
-    function self.processQueuedItemsInCorpse(items, corpseItemCount)
-        self.debugPrint(string.format("Processing queued items in corpse - %d items in corpse", corpseItemCount))
+    function self.processQueuedItemsInCorpse(corpseId, queuedItem, corpseItemCount)
+        self.debugPrint(string.format("Processing queued item in corpse - looking for %s (count: %d)", 
+            queuedItem.itemName or "unknown", queuedItem.count or 1))
+        
+        local expectedCount = queuedItem.count or 1
+        local actualLooted = 0
         
         for i = 1, corpseItemCount do
-            local idx2, tbl = next(items)
+            self.checkInventorySpace()
             
-            while idx2 do
-                local nextIdx2 = next(items, idx2)
+            mq.delay(self.delays.corpseItemWait, function() return mq.TLO.Corpse.Item(i).ID() end)
+            local corpseItem = mq.TLO.Corpse.Item(i)
+            local localItemId = corpseItem.ID()
+            
+            if tostring(localItemId) == tostring(queuedItem.itemId) then
+                self.debugPrint(string.format("Found queued item match: %s in slot %d", corpseItem.Name(), i))
+                self.lootItem(corpseItem, i)
                 
-                self.checkInventorySpace()
-                
-                mq.delay(self.delays.corpseItemWait, function() return mq.TLO.Corpse.Item(i).ID() end)
-                local corpseItem = mq.TLO.Corpse.Item(i)
-                local localItemId = corpseItem.ID()
-                
-                if tostring(localItemId) == tostring(tbl.itemId) then
-                    self.debugPrint(string.format("Found queued item match: %s", corpseItem.Name()))
-                    self.lootItem(corpseItem, i)
-                    
-                    if mq.TLO.Cursor then
-                        mq.cmdf("/autoinventory")
-                    end
-                    mq.delay(self.delays.autoInventory, function() return not mq.TLO.Cursor() end)
-
-                    self.debugPrint(string.format("Removing queued item idx2: %s", tostring(idx2)))
-                    items[idx2] = nil
+                if mq.TLO.Cursor() then
+                    mq.cmdf("/autoinventory")
                 end
+                mq.delay(self.delays.autoInventory, function() return not mq.TLO.Cursor() end)
                 
-                idx2 = nextIdx2
-                if idx2 then
-                    tbl = items[idx2]
+                actualLooted = actualLooted + 1
+                
+                -- Stop if we've looted the expected count
+                if actualLooted >= expectedCount then
+                    self.debugPrint(string.format("Looted all %d expected items", expectedCount))
+                    break
                 end
             end
         end
+        
+        -- Report if we couldn't find all expected items
+        if actualLooted < expectedCount then
+            local myName = mq.TLO.Me.Name()
+            mq.cmdf("/g %s could not find %s (expected %d, found %d) on corpse %d", 
+                myName, queuedItem.itemName or "item", expectedCount, actualLooted, corpseId)
+            self.debugPrint(string.format("WARNING: Expected %d, only looted %d", expectedCount, actualLooted))
+        end
+        
+        return actualLooted
     end
     
     function self.lootQueuedItems()
-        if not self.myQueuedItems then
-            self.myQueuedItems = {}
+        if not self.myQueuedItems or not next(self.myQueuedItems) then
             self.debugPrint("No items in queue to loot")
             return
         end
 
         self.debugPrint("Starting to loot queued items")
-        local idx, items = next(self.myQueuedItems)
         
-        while idx do
-            local nextIdx = next(self.myQueuedItems, idx)
-            self.debugPrint(string.format("Processing corpse %s from queue", tostring(idx)))
+        for corpseId, items in pairs(self.myQueuedItems) do
+            self.debugPrint(string.format("Processing corpse %s from queue", tostring(corpseId)))
             
-            if not self.openCorpse(idx) then
-                self.debugPrint(string.format("Failed to open corpse %s, skipping", tostring(idx)))
-                idx = nextIdx
-                if idx then
-                    items = self.myQueuedItems[idx]
+            if not self.openCorpse(corpseId) then
+                self.debugPrint(string.format("Failed to open corpse %s, skipping", tostring(corpseId)))
+                -- Report failure for all items on this corpse
+                for _, queuedItem in pairs(items) do
+                    local myName = mq.TLO.Me.Name()
+                    mq.cmdf("/g %s could not open corpse %d to loot %s", 
+                        myName, corpseId, queuedItem.itemName or "item")
                 end
-                goto continue
+                goto continue_corpse
             end
             
             local corpseItemCount = tonumber(mq.TLO.Corpse.Items()) or 0
             
             if corpseItemCount == 0 then
                 self.debugPrint("Corpse is empty")
-                self.closeLootWindow()
-                idx = nextIdx
-                if idx then
-                    items = self.myQueuedItems[idx]
+                -- Report failure for all items on this corpse
+                for _, queuedItem in pairs(items) do
+                    local myName = mq.TLO.Me.Name()
+                    mq.cmdf("/g %s found corpse %d empty, could not loot %s (expected %d)", 
+                        myName, corpseId, queuedItem.itemName or "item", queuedItem.count or 1)
                 end
-                goto continue
+                self.closeLootWindow()
+                goto continue_corpse
             end
 
-            self.processQueuedItemsInCorpse(items, corpseItemCount)
-            self.closeLootWindow()
-            
-            self.debugPrint(string.format("Removing corpse %s from queue", tostring(idx)))
-            self.myQueuedItems[idx] = nil
-            
-            idx = nextIdx
-            if idx then
-                items = self.myQueuedItems[idx]
+            -- Process each queued item for this corpse
+            for _, queuedItem in pairs(items) do
+                self.processQueuedItemsInCorpse(corpseId, queuedItem, corpseItemCount)
             end
             
-            ::continue::
+            self.closeLootWindow()
+            
+            ::continue_corpse::
         end
         
+        -- Clear the queue after processing
+        self.myQueuedItems = {}
         self.debugPrint("Finished looting all queued items")
     end
     
@@ -727,35 +799,109 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         self.debugPrint("Looting complete")
     end
     
-    function self.queueItem(line, groupMemberName, corpseId, itemId)
+    -- Queue an item for this character to loot
+    -- Called via event when another player sends: /g mlqi <memberName> <corpseId> <itemId> <itemName> <isLore>
+    function self.queueItem(line, groupMemberName, corpseId, itemId, itemName, isLore)
         local myName = tostring(mq.TLO.Me.Name())
         
         if groupMemberName ~= myName then
             return
         end
         
-        self.debugPrint(string.format("Queueing item %s from corpse %s for %s", 
-            itemId, corpseId, groupMemberName))
+        -- Convert isLore string to boolean
+        local isLoreItem = (isLore == "1" or isLore == "true")
         
-        mq.cmdf("/g " .. myName .. " is adding itemId(" .. itemId .. ") and corpseId(" .. corpseId .. ") to my loot queue")
+        self.debugPrint(string.format("Queueing item %s (%s) from corpse %s for %s, isLore: %s", 
+            itemName or itemId, itemId, corpseId, groupMemberName, tostring(isLoreItem)))
         
-        local queuedItem = {
-            corpseId = corpseId,
-            itemId = itemId
-        }
-
-        utils.multimapInsert(self.myQueuedItems, corpseId, queuedItem)
-
-        for idx, items in pairs(self.multipleUseTable) do
-            if tostring(idx) == tostring(corpseId) then
-                for idx2, tbl in pairs(items) do
-                    if tostring(tbl.itemId) == tostring(itemId) then
-                        table.remove(items, idx2)
-                        self.debugPrint("Removed item from multipleUseTable")
+        -- Lore item checks
+        if isLoreItem then
+            -- Check if we already own this lore item
+            if utils.ownItem(itemName) then
+                mq.cmdf("/g %s already owns %s (Lore item - inventory or bank)", myName, itemName)
+                self.debugPrint(string.format("Rejected lore item %s - already owned", itemName))
+                return
+            end
+            
+            -- Check if we already have this lore item queued
+            for cId, items in pairs(self.myQueuedItems) do
+                for _, qItem in pairs(items) do
+                    if qItem.itemName == itemName then
+                        mq.cmdf("/g %s already has %s queued (Lore item)", myName, itemName)
+                        self.debugPrint(string.format("Rejected lore item %s - already queued", itemName))
+                        return
                     end
                 end
             end
         end
+        
+        mq.cmdf("/g %s is adding %s from corpse %d to loot queue", myName, itemName or ("itemId " .. itemId), tonumber(corpseId))
+        
+        -- Check if we already have this item queued from this corpse
+        local normalizedCorpseId = tonumber(corpseId)
+        local normalizedItemId = tonumber(itemId)
+        
+        if self.myQueuedItems[normalizedCorpseId] then
+            for _, qItem in pairs(self.myQueuedItems[normalizedCorpseId]) do
+                if qItem.itemId == normalizedItemId then
+                    -- Already have this item queued, increment count (unless lore)
+                    if not isLoreItem then
+                        qItem.count = (qItem.count or 1) + 1
+                        self.debugPrint(string.format("Incremented queue count for %s to %d", itemName, qItem.count))
+                        return
+                    end
+                end
+            end
+        end
+        
+        -- New item, add to queue
+        local queuedItem = {
+            corpseId = normalizedCorpseId,
+            itemId = normalizedItemId,
+            itemName = itemName,
+            isLore = isLoreItem,
+            count = 1
+        }
+
+        if not self.myQueuedItems[normalizedCorpseId] then
+            self.myQueuedItems[normalizedCorpseId] = {}
+        end
+        table.insert(self.myQueuedItems[normalizedCorpseId], queuedItem)
+        self.debugPrint(string.format("Added %s to queue with count 1", itemName))
+    end
+    
+    -- Decrement count in multipleUseTable, remove if count reaches 0
+    -- Returns true if successful, false if item not found
+    function self.decrementSharedItemCount(corpseId, itemId)
+        local normalizedCorpseId = tonumber(corpseId)
+        local normalizedItemId = tonumber(itemId)
+        
+        if not self.multipleUseTable[normalizedCorpseId] then
+            self.debugPrint(string.format("decrementSharedItemCount: corpseId %s not found", corpseId))
+            return false
+        end
+        
+        for idx, item in ipairs(self.multipleUseTable[normalizedCorpseId]) do
+            if item.itemId == normalizedItemId then
+                item.count = (item.count or 1) - 1
+                self.debugPrint(string.format("Decremented %s count to %d", item.itemName, item.count))
+                
+                if item.count <= 0 then
+                    table.remove(self.multipleUseTable[normalizedCorpseId], idx)
+                    self.debugPrint(string.format("Removed %s from multipleUseTable (count reached 0)", item.itemName))
+                    
+                    -- Clean up empty corpse entries
+                    if #self.multipleUseTable[normalizedCorpseId] == 0 then
+                        self.multipleUseTable[normalizedCorpseId] = nil
+                        self.debugPrint(string.format("Removed empty corpse entry %s", corpseId))
+                    end
+                end
+                return true
+            end
+        end
+        
+        self.debugPrint(string.format("decrementSharedItemCount: itemId %s not found in corpse %s", itemId, corpseId))
+        return false
     end
     
     return self

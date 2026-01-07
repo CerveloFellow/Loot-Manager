@@ -107,7 +107,7 @@ function ActorManager.setHandleCorpseStats(handlerFunc)
     ActorManager.handleCorpseStats = handlerFunc
 end
 
-function ActorManager.broadcastShareItem(corpseId, itemId, itemName, itemLink)
+function ActorManager.broadcastShareItem(corpseId, itemId, itemName, itemLink, isLore, count)
     local groupSize = (mq.TLO.Group.GroupSize() or 0) - 1
     
     if groupSize >= 0 then
@@ -120,7 +120,9 @@ function ActorManager.broadcastShareItem(corpseId, itemId, itemName, itemLink)
                     corpseId = corpseId,
                     itemId = itemId,
                     itemName = itemName,
-                    itemLink = itemLink
+                    itemLink = itemLink,
+                    isLore = isLore or false,
+                    count = count or 1
                 }
                 
                 if ActorManager.actorMailbox then

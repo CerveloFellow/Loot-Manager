@@ -4,12 +4,13 @@ local imgui = require('ImGui')
 
 local GUI = {}
 
-function GUI.new(lootManager, actorManager)
+function GUI.new(lootManager, actorManager, utils)
     local self = {
         radioSelectedOption = 0,
         groupMemberSelected = mq.TLO.Me.Name(),
         lootManager = lootManager,
         actorManager = actorManager,
+        utils = utils,
         groupMemberCorpseStats = {}  -- Track unlooted corpse counts per member
     }
     
@@ -122,19 +123,57 @@ function GUI.new(lootManager, actorManager)
             return
         end
         
-        mq.cmdf("/g mlqi %s %d %d", 
-            self.groupMemberSelected, 
-            lootManager.listboxSelectedOption.corpseId, 
-            lootManager.listboxSelectedOption.itemId)
-
-        for idx, items in pairs(lootManager.multipleUseTable) do
-            if tostring(idx) == tostring(lootManager.listboxSelectedOption.corpseId) then
-                for idx2, tbl in pairs(items) do
-                    if tostring(tbl.itemId) == tostring(lootManager.listboxSelectedOption.itemId) then
-                        table.remove(items, idx2)
-                    end
+        local selectedItem = lootManager.listboxSelectedOption
+        local isLore = selectedItem.isLore or false
+        local itemName = selectedItem.itemName or "Unknown"
+        
+        -- Lore item validation on the sender side
+        -- The receiver will also validate, but we can give immediate feedback here
+        if isLore then
+            -- Check if selected member is self and we already own it
+            local myName = mq.TLO.Me.Name()
+            if self.groupMemberSelected == myName then
+                if utils and utils.ownItem and utils.ownItem(itemName) then
+                    mq.cmdf("/g Cannot queue %s - %s already owns this Lore item", itemName, myName)
+                    print(string.format("Cannot queue %s - you already own this Lore item", itemName))
+                    return
                 end
             end
+        end
+        
+        -- Send queue command with itemName and isLore flag
+        -- Format: mlqi <memberName> <corpseId> <itemId> "<itemName>" <isLore>
+        -- Item name is quoted to handle spaces
+        local isLoreStr = isLore and "1" or "0"
+        mq.cmdf("/g mlqi %s %d %d \"%s\" %s", 
+            self.groupMemberSelected, 
+            selectedItem.corpseId, 
+            selectedItem.itemId,
+            itemName,
+            isLoreStr)
+
+        -- Decrement count in multipleUseTable (remove if count reaches 0)
+        lootManager.decrementSharedItemCount(selectedItem.corpseId, selectedItem.itemId)
+        
+        -- Update listboxSelectedOption if the item was removed
+        -- Find the next available item to select
+        local foundNewSelection = false
+        for corpseId, items in pairs(lootManager.multipleUseTable) do
+            for _, tbl in ipairs(items) do
+                lootManager.listboxSelectedOption = {
+                    corpseId = corpseId,
+                    itemId = tbl.itemId,
+                    itemName = tbl.itemName,
+                    isLore = tbl.isLore
+                }
+                foundNewSelection = true
+                break
+            end
+            if foundNewSelection then break end
+        end
+        
+        if not foundNewSelection then
+            lootManager.listboxSelectedOption = {}
         end
     end
     
@@ -252,17 +291,40 @@ end
                 for idx2, tbl in ipairs(items) do
                     local isSelected = false
                     
-                    if lootManager.listboxSelectedOption == nil then
+                    if lootManager.listboxSelectedOption == nil or next(lootManager.listboxSelectedOption) == nil then
                         isSelected = true
-                        lootManager.listboxSelectedOption = tbl
+                        lootManager.listboxSelectedOption = {
+                            corpseId = idx,
+                            itemId = tbl.itemId,
+                            itemName = tbl.itemName,
+                            isLore = tbl.isLore
+                        }
                     else
                         isSelected = (lootManager.listboxSelectedOption.itemId == tbl.itemId) and 
-                                    (lootManager.listboxSelectedOption.corpseId == idx) 
+                                    (tostring(lootManager.listboxSelectedOption.corpseId) == tostring(idx))
                     end
 
-                    local selectableText = string.format("%s (%d)", tbl.itemName, idx)
+                    -- Format: (count) - ItemName (corpseId) or just ItemName (corpseId) if count is 1
+                    local itemCount = tbl.count or 1
+                    local selectableText
+                    if itemCount > 1 then
+                        selectableText = string.format("(%d) - %s (%d)", itemCount, tbl.itemName, idx)
+                    else
+                        selectableText = string.format("%s (%d)", tbl.itemName, idx)
+                    end
+                    
+                    -- Add [L] indicator for lore items
+                    if tbl.isLore then
+                        selectableText = selectableText .. " [L]"
+                    end
+                    
                     if imgui.Selectable(selectableText, isSelected) then
-                        lootManager.listboxSelectedOption = tbl
+                        lootManager.listboxSelectedOption = {
+                            corpseId = idx,
+                            itemId = tbl.itemId,
+                            itemName = tbl.itemName,
+                            isLore = tbl.isLore
+                        }
                     end
                     
                     if isSelected then

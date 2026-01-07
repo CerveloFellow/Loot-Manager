@@ -13,23 +13,37 @@ function Utils.contains(tbl, value)
 end
 
 function Utils.ownItem(itemName)
-    local itemCount = mq.TLO.FindItemCount('=' .. itemName)()
-    return itemCount > 0
+    local invCount = mq.TLO.FindItemCount('=' .. itemName)() or 0
+    local bankCount = mq.TLO.FindItemBankCount('=' .. itemName)() or 0
+    return (invCount + bankCount) > 0
 end
 
+-- Insert into multimap with count
+-- If item already exists, updates to the new count (last count wins)
+-- Returns: "inserted" if new entry, "updated" if count was changed, "unchanged" if same count
 function Utils.multimapInsert(map, key, value)
     if map[key] == nil then
         map[key] = {}
     end
     
+    -- Check if item already exists (same itemId)
     for _, v in pairs(map[key]) do
         if v.itemId == value.itemId then
-            return false
+            -- Item exists - update to new count (last count wins)
+            local oldCount = v.count or 1
+            local newCount = value.count or 1
+            if oldCount ~= newCount then
+                v.count = newCount
+                return "updated"
+            end
+            return "unchanged"
         end
     end
     
+    -- New item, ensure count is set
+    value.count = value.count or 1
     table.insert(map[key], value)
-    return true
+    return "inserted"
 end
 
 function Utils.printTable(tbl, indent)
