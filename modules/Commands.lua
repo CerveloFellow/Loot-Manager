@@ -72,66 +72,29 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
     end
     
     function self.reportUnlootedCorpses(line)
-        print("[reportUnlootedCorpses] ===== DEBUG START =====")
-        
-        -- Get spawn count
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")()
-        print(string.format("[reportUnlootedCorpses] SpawnCount query returned: %d", spawnCount))
-        
-        -- Check lootedCorpses size
-        print(string.format("[reportUnlootedCorpses] lootedCorpses contains: %d entries", #lootManager.lootedCorpses))
-        
-        -- Show first 10 entries in lootedCorpses
-        print("[reportUnlootedCorpses] First 10 entries in lootedCorpses:")
-        for i = 1, math.min(10, #lootManager.lootedCorpses) do
-            local entry = lootManager.lootedCorpses[i]
-            print(string.format("  [%d] = %s (type: %s)", i, tostring(entry), type(entry)))
-        end
-        
         -- Get all corpses within radius
-        local nearbyCorpses = corpseManager.getCorpseTable(spawnCount)
-        print(string.format("[reportUnlootedCorpses] getCorpseTable returned: %d corpses", #nearbyCorpses))
+        local nearbyCorpses = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")())
         
         -- Find corpses that are NOT in the looted list
         local unlootedCorpses = {}
-        local checkedCount = 0
-        
         for i, corpse in ipairs(nearbyCorpses) do
-            checkedCount = checkedCount + 1
             local isLooted = false
-            local corpseIdNum = tonumber(corpse.ID)  -- Convert to number for comparison
-            
             for j, lootedCorpse in ipairs(lootManager.lootedCorpses) do
-                local lootedIdNum = tonumber(lootedCorpse)  -- Convert to number for comparison
-                
-                if corpseIdNum == lootedIdNum then
+                if corpse.ID == lootedCorpse then
                     isLooted = true
                     break
                 end
             end
             
             if not isLooted then
-                print(string.format("[reportUnlootedCorpses] UNLOOTED: Corpse ID %s (type: %s, as number: %s) not found in lootedCorpses",
-                    tostring(corpse.ID), type(corpse.ID), tostring(corpseIdNum)))
                 table.insert(unlootedCorpses, corpse)
             end
         end
         
-        print(string.format("[reportUnlootedCorpses] Checked %d corpses, found %d unlooted", checkedCount, #unlootedCorpses))
-        
         -- Print unlooted corpses
         if (#unlootedCorpses > 0) then
-            print("[reportUnlootedCorpses] Unlooted corpse IDs:")
-            for i, corpse in ipairs(unlootedCorpses) do
-                print(string.format("  %s", tostring(corpse.ID)))
-            end
             mq.cmdf("/g "..mq.TLO.Me.Name().." unlooted corpses: " .. #unlootedCorpses)
-        else
-            print("[reportUnlootedCorpses] All corpses are looted!")
-            mq.cmdf("/g "..mq.TLO.Me.Name().." all corpses looted!")
         end
-        
-        print("[reportUnlootedCorpses] ===== DEBUG END =====")
     end
     
     function self.masterLoot()
@@ -144,6 +107,37 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
     
     function self.reloadConfig()
         iniManager.reloadConfig(config)
+    end
+    
+    -- Debug command to dump the shared items table
+    -- Use: /mldebug or bind to a command
+    function self.debugDumpSharedItems()
+        print("===== SHARED ITEMS DEBUG DUMP =====")
+        print(string.format("Character: %s", mq.TLO.Me.Name()))
+        
+        -- Dump multipleUseTable
+        if lootManager.debugDumpSharedItems then
+            lootManager.debugDumpSharedItems()
+        else
+            print("debugDumpSharedItems not available in LootManager")
+        end
+        
+        -- Also dump listboxSelectedOption
+        print("")
+        print("===== LISTBOX SELECTION =====")
+        if lootManager.listboxSelectedOption and next(lootManager.listboxSelectedOption) then
+            print(string.format("  Selected: %s", lootManager.listboxSelectedOption.itemName or "nil"))
+            print(string.format("  corpseId: %s (type: %s)", 
+                tostring(lootManager.listboxSelectedOption.corpseId), 
+                type(lootManager.listboxSelectedOption.corpseId)))
+            print(string.format("  itemId: %s (type: %s)", 
+                tostring(lootManager.listboxSelectedOption.itemId), 
+                type(lootManager.listboxSelectedOption.itemId)))
+        else
+            print("  No item selected")
+        end
+        
+        print("===== END DEBUG DUMP =====")
     end
     
     return self

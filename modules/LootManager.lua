@@ -80,26 +80,82 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     end
 
     function self.handleSharedItem(message)
+        -- Debug: Log raw message types to detect serialization issues
+        self.debugPrint(string.format("Received shared item message - Raw types: corpseId=%s (%s), itemId=%s (%s)", 
+            tostring(message.corpseId), type(message.corpseId),
+            tostring(message.itemId), type(message.itemId)))
+        
+        -- Normalize corpseId and itemId to numbers to prevent type mismatch issues
+        -- Actor serialization can sometimes convert numbers to strings
+        local normalizedCorpseId = tonumber(message.corpseId)
+        local normalizedItemId = tonumber(message.itemId)
+        
+        -- Debug: Warn if type conversion was needed
+        if type(message.corpseId) ~= "number" then
+            self.debugPrint(string.format("WARNING: corpseId arrived as %s, converted to number %s", 
+                type(message.corpseId), normalizedCorpseId))
+        end
+        if type(message.itemId) ~= "number" then
+            self.debugPrint(string.format("WARNING: itemId arrived as %s, converted to number %s", 
+                type(message.itemId), normalizedItemId))
+        end
+        
         self.debugPrint(string.format("Handling shared item: %s (ID: %s) from corpse %s", 
-            message.itemName, message.itemId, message.corpseId))
+            message.itemName, normalizedItemId, normalizedCorpseId))
         
         local item = {
-            corpseId = message.corpseId,
-            itemId = message.itemId,
+            corpseId = normalizedCorpseId,
+            itemId = normalizedItemId,
             itemName = message.itemName,
             itemLink = message.itemLink
         }
 
         if next(self.listboxSelectedOption) == nil then
             self.listboxSelectedOption = {
-                corpseId = message.corpseId,
-                itemId = message.itemId,
+                corpseId = normalizedCorpseId,
+                itemId = normalizedItemId,
                 itemName = message.itemName
             }
             self.debugPrint("Set listboxSelectedOption to first shared item")
         end
         
-        utils.multimapInsert(self.multipleUseTable, message.corpseId, item)
+        -- Debug: Log the key being used for multipleUseTable
+        self.debugPrint(string.format("Inserting into multipleUseTable with key: %s (type: %s)", 
+            normalizedCorpseId, type(normalizedCorpseId)))
+        
+        utils.multimapInsert(self.multipleUseTable, normalizedCorpseId, item)
+    end
+    
+    -- Debug function to dump the entire multipleUseTable state
+    function self.debugDumpSharedItems()
+        self.debugPrint("===== SHARED ITEMS TABLE DUMP =====")
+        local totalItems = 0
+        for corpseId, items in pairs(self.multipleUseTable) do
+            self.debugPrint(string.format("  Corpse KEY: %s (type: %s)", tostring(corpseId), type(corpseId)))
+            for idx, item in ipairs(items) do
+                totalItems = totalItems + 1
+                self.debugPrint(string.format("    [%d] itemName=%s, itemId=%s (type: %s), item.corpseId=%s (type: %s)", 
+                    idx, 
+                    item.itemName, 
+                    tostring(item.itemId), type(item.itemId),
+                    tostring(item.corpseId), type(item.corpseId)))
+                
+                -- Check for mismatch between key and stored corpseId
+                if corpseId ~= item.corpseId then
+                    self.debugPrint(string.format("    *** MISMATCH DETECTED! Key=%s, item.corpseId=%s ***", 
+                        tostring(corpseId), tostring(item.corpseId)))
+                end
+            end
+        end
+        self.debugPrint(string.format("===== Total: %d items across %d corpses =====", 
+            totalItems, self.tableLength(self.multipleUseTable)))
+    end
+    
+    -- Helper to count table entries
+    function self.tableLength(t)
+        local count = 0
+        for _ in pairs(t) do count = count + 1 end
+        return count
     end
     
     function self.printMultipleUseItems()
@@ -226,8 +282,8 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             end
             
             if retryCount >= maxRetries and self.isWindowClosed("LootWnd") then
-                self.debugPrint("Failed to open loot window after max retries")
-                return
+                self.debugPrint("Failed to open loot window after max retries, will retry later")
+                return "retry"
             end
         end
 
@@ -237,16 +293,59 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             return
         end
 
-        -- Get the actual corpse ID we're looting from
-        local actualCorpseId = mq.TLO.Target.ID()
-        self.debugPrint(string.format("Looting from actual corpse ID: %s", actualCorpseId))
+        -- Verify we still have the correct target (should always be true since we only /target once)
+        if mq.TLO.Target.ID() ~= corpseObject.ID then
+            self.debugPrint(string.format("WARNING: Target mismatch! Expected %s, got %s. This should not happen.",
+                corpseObject.ID, mq.TLO.Target.ID()))
+            table.insert(self.lootedCorpses, corpseObject.ID)
+            self.closeLootWindow()
+            return
+        end
+        
+        self.debugPrint(string.format("Looting from corpse ID: %s", corpseObject.ID))
+        
+        -- CRITICAL FIX: Verify that the LOOT WINDOW is showing the corpse we intended to loot
+        -- mq.TLO.Target.ID() = what we targeted
+        -- mq.TLO.Corpse.ID() = whose loot window is actually open (can be different!)
+        local lootWindowCorpseId = mq.TLO.Corpse.ID()
+        if lootWindowCorpseId ~= corpseObject.ID then
+            self.debugPrint(string.format("*** LOOT WINDOW MISMATCH! Target=%s, LootWindow=%s ***", 
+                corpseObject.ID, lootWindowCorpseId))
+            self.debugPrint("The /loot command opened a different corpse's loot window! Will retry later.")
+            -- Close this wrong window
+            self.closeLootWindow()
+            -- Return 'retry' to signal caller to add corpse back to the table
+            return "retry"
+        end
         
         local itemCount = tonumber(mq.TLO.Corpse.Items()) or 0
         self.debugPrint(string.format("Corpse has %d items", itemCount))
         
+        -- COMPREHENSIVE CORPSE CONTENTS DUMP
+        -- Log all items on this corpse for debugging
+        if itemCount > 0 then
+            local actualTargetId = mq.TLO.Target.ID() or 0
+            local actualCorpseId = mq.TLO.Corpse.ID() or 0
+            self.debugPrint(string.format("=== CORPSE CONTENTS DUMP ==="))
+            self.debugPrint(string.format("  corpseObject.ID (intended): %s", tostring(corpseObject.ID)))
+            self.debugPrint(string.format("  mq.TLO.Target.ID(): %s", tostring(actualTargetId)))
+            self.debugPrint(string.format("  mq.TLO.Corpse.ID(): %s", tostring(actualCorpseId)))
+            self.debugPrint(string.format("  Corpse Name: %s", mq.TLO.Target.CleanName() or "unknown"))
+            self.debugPrint(string.format("  Item Count: %d", itemCount))
+            for idx = 1, itemCount do
+                local item = mq.TLO.Corpse.Item(idx)
+                if item and item.ID() then
+                    self.debugPrint(string.format("  [%d] %s (ID: %s)", idx, item.Name() or "nil", tostring(item.ID())))
+                else
+                    self.debugPrint(string.format("  [%d] <nil or no ID>", idx))
+                end
+            end
+            self.debugPrint(string.format("============================="))
+        end
+        
         if itemCount == 0 then
-            self.debugPrint(string.format("Corpse %s has no items (already looted by another player), marking as looted", actualCorpseId))
-            table.insert(self.lootedCorpses, actualCorpseId)
+            self.debugPrint(string.format("Corpse %s has no items (already looted by another player), marking as looted", corpseObject.ID))
+            table.insert(self.lootedCorpses, corpseObject.ID)
             self.closeLootWindow()
             return
         end
@@ -267,9 +366,44 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                     self.debugPrint(string.format("Item %d (%s) is a shared item", i, corpseItem.Name()))
                     mq.cmdf("/g Shared Item: "..corpseItem.ItemLink('CLICKABLE')())
                     
+                    -- COMPREHENSIVE DEBUG: Log ALL relevant IDs to diagnose mismatch
+                    local actualTargetId = mq.TLO.Target.ID() or 0
+                    local actualLootCorpseId = mq.TLO.Corpse.ID() or 0
+                    
+                    self.debugPrint(string.format("=== SHARED ITEM DEBUG ==="))
+                    self.debugPrint(string.format("  corpseObject.ID (passed in): %s", tostring(corpseObject.ID)))
+                    self.debugPrint(string.format("  mq.TLO.Target.ID() (current target): %s", tostring(actualTargetId)))
+                    self.debugPrint(string.format("  mq.TLO.Corpse.ID() (loot window): %s", tostring(actualLootCorpseId)))
+                    self.debugPrint(string.format("  Item: %s (ID: %s)", corpseItem.Name(), tostring(corpseItem.ID())))
+                    
+                    -- Check for any mismatches
+                    if actualTargetId ~= corpseObject.ID then
+                        self.debugPrint(string.format("  *** MISMATCH: Target changed! Expected %s, got %s", 
+                            corpseObject.ID, actualTargetId))
+                    end
+                    if actualLootCorpseId ~= corpseObject.ID then
+                        self.debugPrint(string.format("  *** MISMATCH: Loot window is for different corpse! Expected %s, got %s", 
+                            corpseObject.ID, actualLootCorpseId))
+                    end
+                    if actualTargetId ~= actualLootCorpseId then
+                        self.debugPrint(string.format("  *** MISMATCH: Target (%s) != Loot window (%s)", 
+                            actualTargetId, actualLootCorpseId))
+                    end
+                    self.debugPrint(string.format("========================="))
+                    
+                    -- FIXED: Use the ACTUAL loot window corpse ID, not the passed-in corpseObject.ID
+                    -- This ensures we record the correct corpse that actually has the item
+                    local correctCorpseId = actualLootCorpseId or corpseObject.ID
+                    
+                    -- SAFETY CHECK: Don't broadcast if corpseId is 0 or nil (corpse despawned)
+                    if not correctCorpseId or correctCorpseId == 0 then
+                        self.debugPrint("WARNING: Invalid corpseId (0 or nil), skipping shared item broadcast")
+                        goto continue_item_loop
+                    end
+                    
                     -- FIXED: Add to local list first (works for solo and grouped)
                     local sharedItemMessage = {
-                        corpseId = actualCorpseId,
+                        corpseId = correctCorpseId,
                         itemId = corpseItem.ID(),
                         itemName = corpseItem.Name(),
                         itemLink = corpseItem.ItemLink('CLICKABLE')()
@@ -277,8 +411,10 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                     self.handleSharedItem(sharedItemMessage)
                     
                     -- Broadcast to group (if in group)
+                    self.debugPrint(string.format("Broadcasting shared item to group: corpseId=%s, itemId=%s", 
+                        correctCorpseId, corpseItem.ID()))
                     actorManager.broadcastShareItem(
-                        actualCorpseId,
+                        correctCorpseId,
                         corpseItem.ID(), 
                         corpseItem.Name(), 
                         corpseItem.ItemLink('CLICKABLE')()
@@ -292,7 +428,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                         
                         local found = false
                         for _, existingUpgrade in ipairs(self.upgradeList) do
-                            if existingUpgrade.corpseId == actualCorpseId and 
+                            if existingUpgrade.corpseId == corpseObject.ID and 
                                existingUpgrade.itemId == corpseItem.ID() then
                                 existingUpgrade.slotName = upgradeInfo.slotName
                                 existingUpgrade.improvement = upgradeInfo.improvement
@@ -304,7 +440,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                         
                         if not found then
                             local newUpgrade = {
-                                corpseId = actualCorpseId,
+                                corpseId = corpseObject.ID,
                                 itemId = corpseItem.ID(),
                                 itemName = corpseItem.Name(),
                                 slotName = upgradeInfo.slotName,
@@ -317,10 +453,11 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                     end
                 end
             end
+            ::continue_item_loop::
         end
         
-        table.insert(self.lootedCorpses, actualCorpseId)
-        self.debugPrint(string.format("Finished looting corpse %s, marked as looted", actualCorpseId))
+        table.insert(self.lootedCorpses, corpseObject.ID)
+        self.debugPrint(string.format("Finished looting corpse %s, marked as looted", corpseObject.ID))
         self.closeLootWindow()
     end
     
@@ -502,6 +639,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         local corpsesLooted = 0
         local corpsesDespawned = 0
         local corpsesSkipped = 0
+        local corpsesFailed = 0   -- Corpses that exceeded max retries
+        local retryCount = {}  -- Track retries per corpse ID
+        local maxRetries = 3   -- Max retries before giving up on a corpse
 
         while #corpseTable > 0 do
             local currentCorpse
@@ -527,12 +667,37 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 
                 if navSuccess then
                     self.debugPrint("Successfully navigated to corpse")
-                    local lootSuccess = self.lootCorpse(currentCorpse, isMaster)
-                    if lootSuccess ~= false then  -- nil or true = success
+                    local lootResult = self.lootCorpse(currentCorpse, isMaster)
+                    if lootResult == "retry" then
+                        -- Loot window opened for wrong corpse, add back to table for retry
+                        retryCount[currentCorpse.ID] = (retryCount[currentCorpse.ID] or 0) + 1
+                        if retryCount[currentCorpse.ID] <= maxRetries then
+                            self.debugPrint(string.format("Adding corpse %s back to table for retry (%d/%d)", 
+                                currentCorpse.ID, retryCount[currentCorpse.ID], maxRetries))
+                            table.insert(corpseTable, currentCorpse)
+                        else
+                            self.debugPrint(string.format("Corpse %s exceeded max retries (%d), marking as looted", 
+                                currentCorpse.ID, maxRetries))
+                            table.insert(self.lootedCorpses, currentCorpse.ID)
+                            corpsesFailed = corpsesFailed + 1
+                        end
+                    elseif lootResult ~= false then  -- nil or true = success
                         corpsesLooted = corpsesLooted + 1
                     end
                 else
-                    self.debugPrint(string.format("Failed to navigate to corpse ID: %s", tostring(currentCorpse.ID)))
+                    self.debugPrint(string.format("Failed to navigate to corpse ID: %s, will retry", tostring(currentCorpse.ID)))
+                    -- Add back to table for retry (same logic as loot window mismatch)
+                    retryCount[currentCorpse.ID] = (retryCount[currentCorpse.ID] or 0) + 1
+                    if retryCount[currentCorpse.ID] <= maxRetries then
+                        self.debugPrint(string.format("Adding corpse %s back to table for retry (%d/%d)", 
+                            currentCorpse.ID, retryCount[currentCorpse.ID], maxRetries))
+                        table.insert(corpseTable, currentCorpse)
+                    else
+                        self.debugPrint(string.format("Corpse %s exceeded max retries (%d), marking as looted", 
+                            currentCorpse.ID, maxRetries))
+                        table.insert(self.lootedCorpses, currentCorpse.ID)
+                        corpsesFailed = corpsesFailed + 1
+                    end
                 end
             else
                 corpsesSkipped = corpsesSkipped + 1
@@ -545,12 +710,13 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         self.debugPrint("========================================")
         self.debugPrint("LOOTING SESSION COMPLETE")
         self.debugPrint(string.format("Initial SpawnCount:      %d", spawnCount))
-        self.debugPrint(string.format("Corpses in table:        %d", spawnCount - (spawnCount - #corpseTable)))
+        self.debugPrint(string.format("Corpses in table:        %d", #corpseTable))
         self.debugPrint(string.format("Corpses processed:       %d", corpsesProcessed))
         self.debugPrint(string.format("Corpses looted:          %d", corpsesLooted))
         self.debugPrint(string.format("Corpses despawned:       %d", corpsesDespawned))
         self.debugPrint(string.format("Corpses skipped:         %d", corpsesSkipped))
-        self.debugPrint(string.format("Unaccounted for:         %d", spawnCount - corpsesLooted - corpsesDespawned - corpsesSkipped))
+        self.debugPrint(string.format("Corpses failed (retry):  %d", corpsesFailed))
+        self.debugPrint(string.format("Unaccounted for:         %d", spawnCount - corpsesLooted - corpsesDespawned - corpsesSkipped - corpsesFailed))
         self.debugPrint("========================================")
         
         self.debugPrint("Returning to starting location")
