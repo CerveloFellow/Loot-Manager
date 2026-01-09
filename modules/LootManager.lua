@@ -904,6 +904,35 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         return false
     end
     
+    -- Remove an item from upgradeList when someone loots it
+    -- Called via mq.event when any character broadcasts: "<name> is looting <itemName>"
+    function self.removeFromUpgradeList(line, looterName, itemName)
+        -- Strip trailing single quote if present (from group message format)
+        if itemName and string.sub(itemName, -1) == "'" then
+            itemName = string.sub(itemName, 1, -2)
+        end
+        
+        if not itemName or itemName == "" then
+            return
+        end
+        
+        local removedCount = 0
+        
+        -- Iterate backwards to safely remove while iterating
+        for i = #self.upgradeList, 1, -1 do
+            if self.upgradeList[i].itemName == itemName then
+                self.debugPrint(string.format("Removing %s from upgradeList (looted by %s)", 
+                    itemName, looterName))
+                table.remove(self.upgradeList, i)
+                removedCount = removedCount + 1
+            end
+        end
+        
+        if removedCount > 0 then
+            self.debugPrint(string.format("Removed %d entries for %s from upgradeList", removedCount, itemName))
+        end
+    end
+    
     return self
 end
 
