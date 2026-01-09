@@ -77,6 +77,8 @@ mq.bind("/mlpu", LootManager.printUpgradeList)
 -- Item name is quoted to handle spaces
 mq.event('peerLootItem', '#*#mlqi #1# #2# #3# "#4#" #5#', LootManager.queueItem)
 mq.event('reportUnlooted', '#*#mlru#*#', Commands.reportUnlootedCorpses)
+-- When someone loots an item, remove it from all characters' upgrade lists
+mq.event('itemLooted', '#1# is looting #2#', LootManager.removeFromUpgradeList)
 
 -- Register GUI
 ImGui.Register('masterLootGui', GUI.createGUI())
