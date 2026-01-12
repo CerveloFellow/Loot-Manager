@@ -16,7 +16,7 @@ function CorpseManager.getCorpseTable(numCorpses)
     }
     
     for i = 1, numCorpses do
-        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 20")
+        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 30")
         
         if not spawn then
             skipped.noSpawn = skipped.noSpawn + 1

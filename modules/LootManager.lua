@@ -691,7 +691,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         mq.delay(self.delays.stickOff)
         
         -- VERBOSE DEBUG: Track SpawnCount vs corpseTable
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 20")()
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")()
         self.debugPrint(string.format("========================================"))
         self.debugPrint(string.format("STARTING CORPSE SCAN"))
         self.debugPrint(string.format("SpawnCount query returned: %d", spawnCount))
