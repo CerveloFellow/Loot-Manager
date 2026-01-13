@@ -286,50 +286,70 @@ end
         local cursorY = imgui.GetCursorPosY()
         local availableHeight = windowHeight - cursorY - 20  -- Reserve 20 pixels for padding at bottom
         
+        -- Build a flat sorted list of all items from all corpses
+        local sortedItems = {}
+        for corpseId, items in pairs(lootManager.multipleUseTable) do
+            for _, tbl in ipairs(items) do
+                table.insert(sortedItems, {
+                    corpseId = corpseId,
+                    itemId = tbl.itemId,
+                    itemName = tbl.itemName,
+                    itemLink = tbl.itemLink,
+                    isLore = tbl.isLore,
+                    count = tbl.count or 1
+                })
+            end
+        end
+        
+        -- Sort alphabetically by itemName (case-insensitive)
+        table.sort(sortedItems, function(a, b)
+            local nameA = (a.itemName or ""):lower()
+            local nameB = (b.itemName or ""):lower()
+            return nameA < nameB
+        end)
+        
         if imgui.BeginListBox("", ImVec2(0,125)) then
-            for idx, items in pairs(lootManager.multipleUseTable) do
-                for idx2, tbl in ipairs(items) do
-                    local isSelected = false
-                    
-                    if lootManager.listboxSelectedOption == nil or next(lootManager.listboxSelectedOption) == nil then
-                        isSelected = true
-                        lootManager.listboxSelectedOption = {
-                            corpseId = idx,
-                            itemId = tbl.itemId,
-                            itemName = tbl.itemName,
-                            isLore = tbl.isLore
-                        }
-                    else
-                        isSelected = (lootManager.listboxSelectedOption.itemId == tbl.itemId) and 
-                                    (tostring(lootManager.listboxSelectedOption.corpseId) == tostring(idx))
-                    end
+            for _, item in ipairs(sortedItems) do
+                local isSelected = false
+                
+                if lootManager.listboxSelectedOption == nil or next(lootManager.listboxSelectedOption) == nil then
+                    isSelected = true
+                    lootManager.listboxSelectedOption = {
+                        corpseId = item.corpseId,
+                        itemId = item.itemId,
+                        itemName = item.itemName,
+                        isLore = item.isLore
+                    }
+                else
+                    isSelected = (lootManager.listboxSelectedOption.itemId == item.itemId) and 
+                                (tostring(lootManager.listboxSelectedOption.corpseId) == tostring(item.corpseId))
+                end
 
-                    -- Format: (count) - ItemName (corpseId) or just ItemName (corpseId) if count is 1
-                    local itemCount = tbl.count or 1
-                    local selectableText
-                    if itemCount > 1 then
-                        selectableText = string.format("(%d) - %s (%d)", itemCount, tbl.itemName, idx)
-                    else
-                        selectableText = string.format("%s (%d)", tbl.itemName, idx)
-                    end
-                    
-                    -- Add [L] indicator for lore items
-                    if tbl.isLore then
-                        selectableText = selectableText .. " [L]"
-                    end
-                    
-                    if imgui.Selectable(selectableText, isSelected) then
-                        lootManager.listboxSelectedOption = {
-                            corpseId = idx,
-                            itemId = tbl.itemId,
-                            itemName = tbl.itemName,
-                            isLore = tbl.isLore
-                        }
-                    end
-                    
-                    if isSelected then
-                        imgui.SetItemDefaultFocus()
-                    end
+                -- Format: (count) - ItemName (corpseId) or just ItemName (corpseId) if count is 1
+                local itemCount = item.count or 1
+                local selectableText
+                if itemCount > 1 then
+                    selectableText = string.format("(%d) - %s (%d)", itemCount, item.itemName, item.corpseId)
+                else
+                    selectableText = string.format("%s (%d)", item.itemName, item.corpseId)
+                end
+                
+                -- Add [L] indicator for lore items
+                if item.isLore then
+                    selectableText = selectableText .. " [L]"
+                end
+                
+                if imgui.Selectable(selectableText, isSelected) then
+                    lootManager.listboxSelectedOption = {
+                        corpseId = item.corpseId,
+                        itemId = item.itemId,
+                        itemName = item.itemName,
+                        isLore = item.isLore
+                    }
+                end
+                
+                if isSelected then
+                    imgui.SetItemDefaultFocus()
                 end
             end
             imgui.EndListBox()

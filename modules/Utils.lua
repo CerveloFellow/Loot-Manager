@@ -21,6 +21,7 @@ end
 -- Insert into multimap with count
 -- If item already exists, updates to the new count (last count wins)
 -- Returns: "inserted" if new entry, "updated" if count was changed, "unchanged" if same count
+-- Items are kept sorted alphabetically by itemName
 function Utils.multimapInsert(map, key, value)
     if map[key] == nil then
         map[key] = {}
@@ -43,6 +44,14 @@ function Utils.multimapInsert(map, key, value)
     -- New item, ensure count is set
     value.count = value.count or 1
     table.insert(map[key], value)
+    
+    -- Sort alphabetically by itemName (case-insensitive)
+    table.sort(map[key], function(a, b)
+        local nameA = (a.itemName or ""):lower()
+        local nameB = (b.itemName or ""):lower()
+        return nameA < nameB
+    end)
+    
     return "inserted"
 end
 
