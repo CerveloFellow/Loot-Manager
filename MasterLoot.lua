@@ -72,6 +72,10 @@ mq.bind("/mlru", Commands.reportUnlootedCorpses)
 mq.bind("/mlpm", LootManager.printMultipleUseItems)
 mq.bind("/mlpu", LootManager.printUpgradeList)
 
+-- NEW: Register find loot command
+-- Usage: /mlfind "search string" - searches all corpses for items matching substring
+mq.bind("/mlfind", Commands.findLoot)
+
 -- Register events
 -- Updated pattern: mlqi <memberName> <corpseId> <itemId> "<itemName>" <isLore>
 -- Item name is quoted to handle spaces
@@ -82,6 +86,19 @@ mq.event('itemLooted', '#1# is looting #2#', LootManager.removeFromUpgradeList)
 
 -- Register GUI
 ImGui.Register('masterLootGui', GUI.createGUI())
+
+-- Print available commands on startup
+print("=== MasterLoot Commands ===")
+print("/mlml       - Master loot all corpses")
+print("/mlfind     - Find and loot items matching search string(s)")
+print("              Usage: /mlfind \"astrial\" \"hermit\" \"celestial\"")
+print("              Usage: /mlfind sword")
+print("/mlli       - Loot queued items")
+print("/mlrc       - Reload configuration")
+print("/mlru       - Report unlooted corpses")
+print("/mlpm       - Print multiple use items")
+print("/mlpu       - Print upgrade list")
+print("===========================")
 
 -- Main loop
 while openGUI do
