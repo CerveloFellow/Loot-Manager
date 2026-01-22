@@ -248,7 +248,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     
     function self.lootCorpseFindMode(corpseObject)
         if not self.corpseStillExists(corpseObject.ID) then
-            table.insert(self.lootedCorpses, corpseObject.ID)
             return
         end
         
@@ -257,7 +256,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         if not self.verifyTarget(corpseObject.ID) then
             if not self.corpseStillExists(corpseObject.ID) then
-                table.insert(self.lootedCorpses, corpseObject.ID)
                 return
             end
             return "retry"
@@ -291,12 +289,10 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         end
 
         if (mq.TLO.Target.ID() or 0) == 0 then
-            table.insert(self.lootedCorpses, corpseObject.ID)
             return
         end
 
         if mq.TLO.Target.ID() ~= corpseObject.ID then
-            table.insert(self.lootedCorpses, corpseObject.ID)
             self.closeLootWindow()
             return
         end
@@ -310,7 +306,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         local itemCount = tonumber(mq.TLO.Corpse.Items()) or 0
         
         if itemCount == 0 then
-            table.insert(self.lootedCorpses, corpseObject.ID)
             self.closeLootWindow()
             return
         end
@@ -362,7 +357,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         self.debugPrint(string.format("[FindMode] === Corpse %d complete: checked=%d, looted=%d ===", 
             corpseObject.ID, itemsChecked, itemsLooted))
         
-        table.insert(self.lootedCorpses, corpseObject.ID)
         self.closeLootWindow()
         
         return itemsLooted > 0
@@ -437,7 +431,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 
                 if not self.corpseStillExists(currentCorpse.ID) then
                     corpsesDespawned = corpsesDespawned + 1
-                    table.insert(self.lootedCorpses, currentCorpse.ID)
                     goto continue
                 end
                 
@@ -462,7 +455,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                         if retryCount[currentCorpse.ID] <= maxRetries then
                             table.insert(corpseTable, currentCorpse)
                         else
-                            table.insert(self.lootedCorpses, currentCorpse.ID)
                             corpsesFailed = corpsesFailed + 1
                         end
                     elseif lootResult == true then
@@ -470,13 +462,11 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                     end
                 elseif navError == "despawned" then
                     corpsesDespawned = corpsesDespawned + 1
-                    table.insert(self.lootedCorpses, currentCorpse.ID)
                 else
                     retryCount[currentCorpse.ID] = (retryCount[currentCorpse.ID] or 0) + 1
                     if retryCount[currentCorpse.ID] <= maxRetries then
                         table.insert(corpseTable, currentCorpse)
                     else
-                        table.insert(self.lootedCorpses, currentCorpse.ID)
                         corpsesFailed = corpsesFailed + 1
                     end
                 end
