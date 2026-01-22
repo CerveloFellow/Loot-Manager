@@ -224,6 +224,7 @@ function GUI.new(lootManager, actorManager, utils)
             lootManager.listboxSelectedOption = {}
             lootManager.upgradeList = {}
             actorManager.broadcastClearSharedList()
+            mq.cmdf("/dgga /hidecorpse all")
             mq.cmdf("/g Shared loot list cleared")
         end
         

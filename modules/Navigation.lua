@@ -1,17 +1,30 @@
--- modules/Navigation.lua
+-- modules/Navigation.lua (OPTIMIZED)
 local mq = require('mq')
 
 local delay = {
-        warpDelay = 250,
-        navDelay = 2000,
-        targetDelay = 100
+    warpDelay = 150,           -- OPTIMIZED: Reduced from 250
+    navDelay = 2000,
+    targetDelay = 50,          -- OPTIMIZED: Reduced from 100
+    targetVerifyMax = 500      -- NEW: Max time to wait for target
 }
 local Navigation = {}
 
-local function atCorpse(corpseId)
-    -- Handle nil corpseId gracefully
+-- OPTIMIZED: Check if we have the correct target (not just distance)
+local function hasTarget(corpseId)
     if not corpseId then
-        print("WARNING: atCorpse called with nil corpseId")
+        return false
+    end
+    local targetId = mq.TLO.Target.ID()
+    return targetId and targetId == corpseId
+end
+
+local function atCorpse(corpseId)
+    if not corpseId then
+        return false
+    end
+    
+    -- First verify we have the correct target
+    if not hasTarget(corpseId) then
         return false
     end
     
@@ -25,8 +38,14 @@ local function atCorpse(corpseId)
     return false
 end
 
+-- NEW: Quick check if spawn exists (for early bailout)
+local function spawnExists(corpseId)
+    if not corpseId then return false end
+    local spawn = mq.TLO.Spawn(corpseId)
+    return spawn and spawn.ID() and spawn.ID() > 0
+end
+
 function Navigation.navigateToLocation(config, x, y, z)
-    -- Validate coordinates before attempting navigation
     if not x or not y or not z then
         print("ERROR: Invalid coordinates - x:" .. tostring(x) .. " y:" .. tostring(y) .. " z:" .. tostring(z))
         return false
@@ -47,18 +66,52 @@ function Navigation.navigateToCorpse(config, corpseId)
     if not corpseId then
         print("ERROR: Invalid corpseId: "..tostring(corpseId))
         return false
-    else
-        if config.useWarp then
+    end
+    
+    -- OPTIMIZATION: Early check if corpse still exists
+    if not spawnExists(corpseId) then
+        return false, "despawned"
+    end
+    
+    if config.useWarp then
+        -- Target the corpse
+        mq.cmdf("/target id %d", corpseId)
+        
+        -- OPTIMIZED: Wait specifically for target to be acquired (not distance)
+        mq.delay(delay.targetVerifyMax, function() return hasTarget(corpseId) end)
+        
+        -- CRITICAL FIX: Verify target before warping
+        if not hasTarget(corpseId) then
+            -- Target failed - corpse may have despawned or be out of range
+            -- Check if it still exists
+            if not spawnExists(corpseId) then
+                return false, "despawned"
+            end
+            -- Corpse exists but couldn't target - try again
             mq.cmdf("/target id %d", corpseId)
-            mq.delay(delay.targetDelay, function() return atCorpse(corpseId) end)
-            mq.cmdf("/warp t")
-            mq.delay(delay.warpDelay, function() return atCorpse(corpseId) end)
-        else
-            mq.cmdf("/target id %d", corpseId)
-            mq.delay(delay.targetDelay, function() return atCorpse(corpseId) end)
-            mq.cmdf("/navigate Target")
-            mq.delay(delay.navDelay, function() return atCorpse(corpseId) end)
+            mq.delay(delay.targetVerifyMax, function() return hasTarget(corpseId) end)
+            
+            if not hasTarget(corpseId) then
+                return false, "target_failed"
+            end
         end
+        
+        -- Now safe to warp
+        mq.cmdf("/warp t")
+        mq.delay(delay.warpDelay, function() return atCorpse(corpseId) end)
+    else
+        mq.cmdf("/target id %d", corpseId)
+        mq.delay(delay.targetVerifyMax, function() return hasTarget(corpseId) end)
+        
+        if not hasTarget(corpseId) then
+            if not spawnExists(corpseId) then
+                return false, "despawned"
+            end
+            return false, "target_failed"
+        end
+        
+        mq.cmdf("/navigate Target")
+        mq.delay(delay.navDelay, function() return atCorpse(corpseId) end)
     end
 
     return true

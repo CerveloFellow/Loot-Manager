@@ -109,6 +109,81 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
         iniManager.reloadConfig(config)
     end
     
+    -- NEW: Find loot command - searches corpses for items matching any of the provided substrings
+    -- Usage: /mlfind "search1" "search2" "search3" or /mlfind search (single unquoted)
+    -- Prefix with + to loot all regardless of ownership: "+immortality"
+    function self.findLoot(line)
+        local searchStrings = {}
+        
+        -- MQ passes all arguments as a single string in 'line'
+        -- We need to parse it ourselves
+        if not line or line == "" then
+            print("Usage: /mlfind \"<search string>\" [\"<search string 2>\" ...]")
+            print("Prefix with + to loot all (ignore ownership): \"+immortality\"")
+            print("Example: /mlfind \"Tome of Power\"")
+            print("Example: /mlfind \"astrial\" \"hermit\" \"celestial\"")
+            print("Example: /mlfind \"astrial\" \"+immortality\" (loot all immortality items)")
+            print("Example: /mlfind sword")
+            return
+        end
+        
+        -- Debug: print raw input
+        if lootManager.debugEnabled then
+            print(string.format("[FindMode] Raw input: '%s'", line))
+        end
+        
+        -- Parse quoted strings (handles both "string" and "+string" inside quotes)
+        -- Pattern: "([^"]*)" matches content between double quotes (including empty)
+        for quoted in string.gmatch(line, '"([^"]*)"') do
+            local trimmed = quoted:match("^%s*(.-)%s*$")
+            if trimmed and trimmed ~= "" then
+                table.insert(searchStrings, trimmed)
+                if lootManager.debugEnabled then
+                    print(string.format("[FindMode] Parsed quoted: '%s'", trimmed))
+                end
+            end
+        end
+        
+        -- Also check for single-quoted strings
+        for quoted in string.gmatch(line, "'([^']*)'") do
+            local trimmed = quoted:match("^%s*(.-)%s*$")
+            if trimmed and trimmed ~= "" then
+                table.insert(searchStrings, trimmed)
+                if lootManager.debugEnabled then
+                    print(string.format("[FindMode] Parsed single-quoted: '%s'", trimmed))
+                end
+            end
+        end
+        
+        -- If no quoted strings found, treat the whole input as a single search term
+        if #searchStrings == 0 then
+            local trimmed = line:match("^%s*(.-)%s*$")
+            if trimmed and trimmed ~= "" then
+                table.insert(searchStrings, trimmed)
+                if lootManager.debugEnabled then
+                    print(string.format("[FindMode] No quotes found, using whole input: '%s'", trimmed))
+                end
+            end
+        end
+        
+        if #searchStrings == 0 then
+            print("Usage: /mlfind \"<search string>\" [\"<search string 2>\" ...]")
+            print("Prefix with + to loot all (ignore ownership): \"+immortality\"")
+            print("Example: /mlfind \"astrial\" \"+hermit\" \"celestial\"")
+            return
+        end
+        
+        -- Print what we parsed (debug only)
+        if lootManager.debugEnabled then
+            print(string.format("[FindMode] Parsed %d search terms:", #searchStrings))
+            for i, str in ipairs(searchStrings) do
+                print(string.format("[FindMode]   [%d] '%s'", i, str))
+            end
+        end
+        
+        lootManager.doFindLoot(searchStrings)
+    end
+    
     -- Debug command to dump the shared items table
     -- Use: /mldebug or bind to a command
     function self.debugDumpSharedItems()
