@@ -1,15 +1,18 @@
--- modules/Navigation.lua (OPTIMIZED)
+-- modules/Navigation.lua (OPTIMIZED v2)
+-- Changes in v2:
+--   - Reduced targetVerifyMax from 500 to 400
+--   - Reduced warpDelay from 150 to 100
 local mq = require('mq')
 
 local delay = {
-    warpDelay = 150,           -- OPTIMIZED: Reduced from 250
+    warpDelay = 100,           -- v2: Reduced from 150
     navDelay = 2000,
-    targetDelay = 50,          -- OPTIMIZED: Reduced from 100
-    targetVerifyMax = 500      -- NEW: Max time to wait for target
+    targetDelay = 50,
+    targetVerifyMax = 400      -- v2: Reduced from 500
 }
 local Navigation = {}
 
--- OPTIMIZED: Check if we have the correct target (not just distance)
+-- Check if we have the correct target (not just distance)
 local function hasTarget(corpseId)
     if not corpseId then
         return false
@@ -38,7 +41,7 @@ local function atCorpse(corpseId)
     return false
 end
 
--- NEW: Quick check if spawn exists (for early bailout)
+-- Quick check if spawn exists (for early bailout)
 local function spawnExists(corpseId)
     if not corpseId then return false end
     local spawn = mq.TLO.Spawn(corpseId)
@@ -68,7 +71,7 @@ function Navigation.navigateToCorpse(config, corpseId)
         return false
     end
     
-    -- OPTIMIZATION: Early check if corpse still exists
+    -- Early check if corpse still exists
     if not spawnExists(corpseId) then
         return false, "despawned"
     end
@@ -77,10 +80,10 @@ function Navigation.navigateToCorpse(config, corpseId)
         -- Target the corpse
         mq.cmdf("/target id %d", corpseId)
         
-        -- OPTIMIZED: Wait specifically for target to be acquired (not distance)
+        -- Wait specifically for target to be acquired (not distance)
         mq.delay(delay.targetVerifyMax, function() return hasTarget(corpseId) end)
         
-        -- CRITICAL FIX: Verify target before warping
+        -- CRITICAL: Verify target before warping
         if not hasTarget(corpseId) then
             -- Target failed - corpse may have despawned or be out of range
             -- Check if it still exists

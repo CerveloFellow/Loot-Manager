@@ -1,4 +1,9 @@
--- modules/LootManager.lua (OPTIMIZED - COMPLETE VERSION)
+-- modules/LootManager.lua (OPTIMIZED v2)
+-- Changes in v2:
+--   - E3 loot toggle to prevent conflicts
+--   - Further reduced delays
+--   - Group member collision avoidance
+--   - All functions complete
 local mq = require('mq')
 
 local LootManager = {}
@@ -20,23 +25,49 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         debugEnabled = false,
         findMode = false,
         findStrings = {},
+        e3LootWasEnabled = false,  -- NEW: Track E3 loot state
         delays = {
             windowClose = 50,
-            itemLoot = 200,            -- OPTIMIZED: Reduced from 250
-            quantityAccept = 75,       -- OPTIMIZED: Reduced from 100
-            corpseTarget = 50,         -- OPTIMIZED: Reduced from 100
-            corpseOpen = 800,          -- OPTIMIZED: Reduced from 1500
-            corpseFix = 500,           -- OPTIMIZED: Reduced from 1000
-            lootCommand = 150,         -- OPTIMIZED: Reduced from 250
-            corpseItemWait = 0,        -- OPTIMIZED: Set to 0 - items already loaded
-            postNavigation = 150,
-            postNavigationRetry = 150,
-            autoInventory = 150,
-            stickOff = 150,
-            warpMovement = 150,
-            navigationMovement = 2000
+            itemLoot = 175,            -- v2: Reduced from 200
+            quantityAccept = 75,
+            corpseTarget = 50,
+            corpseOpen = 700,          -- v2: Reduced from 800
+            corpseFix = 400,           -- v2: Reduced from 500
+            lootCommand = 125,         -- v2: Reduced from 150
+            corpseItemWait = 0,
+            postNavigation = 100,      -- v2: Reduced from 150
+            postNavigationRetry = 100, -- v2: Reduced from 150
+            autoInventory = 125,       -- v2: Reduced from 150
+            stickOff = 100,            -- v2: Reduced from 150
+            warpMovement = 100,        -- v2: Reduced from 150
+            navigationMovement = 2000,
+            e3Toggle = 100             -- NEW: Delay after E3 toggle
         }
     }
+    
+    -- NEW: E3 loot management functions
+    function self.disableE3Loot()
+        -- Check if E3 loot is currently enabled
+        local e3LootStatus = mq.TLO.E3 and mq.TLO.E3.Setting("Misc", "Loot")
+        if e3LootStatus and (e3LootStatus() == "TRUE" or e3LootStatus() == "true" or e3LootStatus() == "1") then
+            self.e3LootWasEnabled = true
+            mq.cmdf("/e3 toggle loot off")
+            mq.delay(self.delays.e3Toggle)
+            self.debugPrint("[E3] Disabled E3 looting temporarily")
+        else
+            self.e3LootWasEnabled = false
+            self.debugPrint("[E3] E3 looting was already disabled or E3 not present")
+        end
+    end
+    
+    function self.restoreE3Loot()
+        if self.e3LootWasEnabled then
+            mq.cmdf("/e3 toggle loot on")
+            mq.delay(self.delays.e3Toggle)
+            self.debugPrint("[E3] Re-enabled E3 looting")
+            self.e3LootWasEnabled = false
+        end
+    end
     
     function self.debugPrint(message)
         if self.debugEnabled then
@@ -62,6 +93,24 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         if spawn and spawn.ID() and spawn.ID() > 0 then
             if spawn.Type() == "Corpse" then
                 return true
+            end
+        end
+        return false
+    end
+    
+    -- NEW: Check if another group member is targeting this corpse
+    function self.isCorpseTargetedByGroupMember(corpseId)
+        local groupSize = mq.TLO.Group.Members() or 0
+        if groupSize == 0 then return false end
+        
+        for i = 1, groupSize do
+            local member = mq.TLO.Group.Member(i)
+            if member and member.ID() then
+                local memberTarget = member.TargetOfTarget
+                if memberTarget and memberTarget.ID() == corpseId then
+                    -- Another group member is targeting this corpse
+                    return true, member.Name()
+                end
             end
         end
         return false
@@ -325,6 +374,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             return
         end
         
+        -- NEW: Disable E3 looting to prevent conflicts
+        self.disableE3Loot()
+        
         self.findMode = true
         self.findStrings = {}
         for _, str in ipairs(searchStrings) do
@@ -370,6 +422,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         local corpsesWithMatches = 0
         local corpsesDespawned = 0
         local corpsesFailed = 0
+        local corpsesSkippedCollision = 0  -- NEW: Track collision skips
         local retryCount = {}
         local maxRetries = 2
 
@@ -377,7 +430,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             local currentCorpse
             self.debugPrint(string.format("[FindMode] Corpses Remaining: %d", #corpseTable))
             
-            -- OPTIMIZED: Use getNearestCorpse for efficient pathing
             currentCorpse, corpseTable = corpseManager.getNearestCorpse(corpseTable)
             
             if currentCorpse and currentCorpse.ID and not self.isLooted(currentCorpse.ID) then
@@ -386,6 +438,17 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 if not self.corpseStillExists(currentCorpse.ID) then
                     corpsesDespawned = corpsesDespawned + 1
                     table.insert(self.lootedCorpses, currentCorpse.ID)
+                    goto continue
+                end
+                
+                -- NEW: Skip if another group member is targeting this corpse
+                local isTargeted, targetedBy = self.isCorpseTargetedByGroupMember(currentCorpse.ID)
+                if isTargeted then
+                    self.debugPrint(string.format("[FindMode] Skipping corpse %d - targeted by %s", 
+                        currentCorpse.ID, targetedBy or "group member"))
+                    corpsesSkippedCollision = corpsesSkippedCollision + 1
+                    -- Don't mark as looted - let us try again later
+                    table.insert(corpseTable, currentCorpse)
                     goto continue
                 end
                 
@@ -434,6 +497,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         if stickState then
             mq.cmdf("/stick on")
         end
+        
+        -- NEW: Re-enable E3 looting
+        self.restoreE3Loot()
     end
 
     function self.lootCorpse(corpseObject, isMaster)
@@ -766,7 +832,6 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         return results
     end
     
-    -- CRITICAL: This function was missing!
     function self.lootQueuedItems()
         self.debugPrint("Starting to loot queued items")
         
@@ -774,6 +839,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             print("No items queued for looting")
             return
         end
+        
+        -- NEW: Disable E3 looting
+        self.disableE3Loot()
         
         local startingLocation = {
             X = mq.TLO.Me.X(),
@@ -825,10 +893,12 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             mq.cmdf("/stick on")
         end
         
+        -- NEW: Re-enable E3 looting
+        self.restoreE3Loot()
+        
         mq.cmdf("/g %s finished looting queued items", mq.TLO.Me.Name())
     end
     
-    -- CRITICAL: This function was missing!
     function self.queueItem(line, groupMemberName, corpseId, itemId, itemName, isLore)
         local myName = tostring(mq.TLO.Me.Name())
         
@@ -887,10 +957,12 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         table.insert(self.myQueuedItems[normalizedCorpseId], queuedItem)
     end
     
-    -- CRITICAL: This function was missing!
     function self.doLoot(isMaster)
         self.debugPrint("Starting loot operation, isMaster: " .. tostring(isMaster))
         mq.cmdf("/g " .. mq.TLO.Me.Name() .. " is beginning Loot")
+        
+        -- NEW: Disable E3 looting
+        self.disableE3Loot()
         
         local startingLocation = {
             X = mq.TLO.Me.X(),
@@ -927,6 +999,15 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 if not self.corpseStillExists(currentCorpse.ID) then
                     corpsesDespawned = corpsesDespawned + 1
                     table.insert(self.lootedCorpses, currentCorpse.ID)
+                    goto continue
+                end
+                
+                -- NEW: Skip if another group member is targeting this corpse
+                local isTargeted, targetedBy = self.isCorpseTargetedByGroupMember(currentCorpse.ID)
+                if isTargeted then
+                    self.debugPrint(string.format("Skipping corpse %d - targeted by %s", 
+                        currentCorpse.ID, targetedBy or "group member"))
+                    table.insert(corpseTable, currentCorpse)
                     goto continue
                 end
                 
@@ -972,6 +1053,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             mq.cmdf("/stick on")
         end
         
+        -- NEW: Re-enable E3 looting
+        self.restoreE3Loot()
+        
         mq.cmdf("/g " .. mq.TLO.Me.Name() .. " is done Looting")
     end
     
@@ -1013,6 +1097,24 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         for i = #self.upgradeList, 1, -1 do
             if self.upgradeList[i].itemName == itemName then
                 table.remove(self.upgradeList, i)
+            end
+        end
+    end
+    
+    function self.debugDumpSharedItems()
+        print("===== SHARED ITEMS (multipleUseTable) =====")
+        if not self.multipleUseTable or not next(self.multipleUseTable) then
+            print("  (empty)")
+        else
+            for corpseId, items in pairs(self.multipleUseTable) do
+                print(string.format("  Corpse %s:", tostring(corpseId)))
+                for _, item in ipairs(items) do
+                    print(string.format("    - %s (ID:%s) x%d %s", 
+                        item.itemName or "Unknown", 
+                        tostring(item.itemId),
+                        item.count or 1,
+                        item.isLore and "[LORE]" or ""))
+                end
             end
         end
     end
