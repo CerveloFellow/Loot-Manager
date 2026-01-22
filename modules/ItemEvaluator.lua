@@ -48,6 +48,14 @@ function ItemEvaluator.shouldLoot(config, utils, corpseItem, debug)
         if debug then print("Item not in ignore list - Continue") end
     end
 
+    -- Check items to keep list (early check for explicit keeps)
+    if utils.contains(config.itemsToKeep, corpseItem.Name()) then
+        if debug then print("Item in keep list - Looting: " .. corpseItem.Name()) end
+        return true
+    else
+        if debug then print("Item not in keep list - Continue") end
+    end
+
     if corpseItem.CanUse() then
         if debug then print("Player can use this item - Continue") end
         
@@ -121,13 +129,6 @@ function ItemEvaluator.shouldLoot(config, utils, corpseItem, debug)
         if debug then print("Item is not stackable - Continue") end
     end
     
-    -- Check items to keep list
-    if utils.contains(config.itemsToKeep, corpseItem.Name()) then
-        if debug then print("Item in keep list - Looting: " .. corpseItem.Name()) end
-        return true
-    else
-        if debug then print("Item not in keep list - Continue") end
-    end
     
     if debug then print("No matching criteria - Skip: " .. corpseItem.Name()) end
     if debug then print("=== End evaluation ===") end
