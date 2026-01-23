@@ -16,7 +16,7 @@ function CorpseManager.getCorpseTable(numCorpses)
     }
     
     for i = 1, numCorpses do
-        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 30")
+        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 1000")
         
         if not spawn then
             skipped.noSpawn = skipped.noSpawn + 1
@@ -85,6 +85,7 @@ function CorpseManager.getNearestCorpse(corpseTable)
     
     local nearestIndex = 0
     local nearestDistance = 9999
+    local invalidIndices = {}  -- Track corpses that no longer exist
     
     for i = 1, #corpseTable do
         local corpse = corpseTable[i]
@@ -96,14 +97,37 @@ function CorpseManager.getNearestCorpse(corpseTable)
                 nearestIndex = i
                 nearestDistance = distance
             end
+        else
+            -- Corpse no longer exists - mark for removal
+            table.insert(invalidIndices, i)
         end
     end
     
-    if nearestIndex > 0 then
-        local nearest = table.remove(corpseTable, nearestIndex)
-        return nearest, corpseTable
+    -- Remove invalid corpses from table (in reverse order to preserve indices)
+    for i = #invalidIndices, 1, -1 do
+        table.remove(corpseTable, invalidIndices[i])
     end
     
+    -- Recalculate nearestIndex if we removed items before it
+    if nearestIndex > 0 then
+        -- Adjust index based on how many items were removed before it
+        local adjustment = 0
+        for _, invalidIdx in ipairs(invalidIndices) do
+            if invalidIdx < nearestIndex then
+                adjustment = adjustment + 1
+            end
+        end
+        nearestIndex = nearestIndex - adjustment
+        
+        if nearestIndex > 0 and nearestIndex <= #corpseTable then
+            local nearest = table.remove(corpseTable, nearestIndex)
+            return nearest, corpseTable
+        end
+    end
+    
+    -- No valid corpses found - table should now be empty or contain only invalid ones
+    -- If we removed all invalid ones and table is empty, return nil
+    -- If table still has items but none were valid, they were all removed above
     return nil, corpseTable
 end
 

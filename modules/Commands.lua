@@ -190,6 +190,12 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
     -- Direct: /mlscan CharName 142,156,178
     -- Event: receives (line, charName, corpseIds) from pattern '#*#mlscan #1# #2#'
     function self.scanCorpses(lineOrCharName, charNameOrCorpseIds, corpseIdsOrNil)
+        -- Guard: If called with no arguments or empty string, silently return
+        -- This can happen during startup when events are registered
+        if not lineOrCharName or lineOrCharName == "" then
+            return
+        end
+        
         if corpseScanner then
             local charName, corpseIdStr
             
@@ -211,8 +217,7 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
                 local combined = charName .. " " .. corpseIdStr
                 corpseScanner.handleScanCommand(combined)
             else
-                print("[Commands] ERROR: Invalid /mlscan format")
-                print("Usage: /mlscan <charName> <corpseId1>,<corpseId2>,...")
+                print("[CorpseScanner] ERROR: Invalid /mlscan format. Expected: /mlscan <charName> <corpseId1>,<corpseId2>,...")
             end
         else
             print("[Commands] ERROR: CorpseScanner not initialized")

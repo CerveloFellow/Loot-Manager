@@ -54,7 +54,10 @@ function CorpseScanner.new(config, utils, lootState, navigation, actorManager, l
         local charName, corpseListStr = string.match(line, "^(%S+)%s+(.+)$")
         
         if not charName or not corpseListStr then
-            print("[CorpseScanner] ERROR: Invalid /mlscan format. Expected: /mlscan <charName> <corpseId1>,<corpseId2>,...")
+            -- Only print error if line had some content (not just whitespace)
+            if line:match("%S") then
+                print("[CorpseScanner] ERROR: Invalid /mlscan format. Expected: /mlscan <charName> <corpseId1>,<corpseId2>,...")
+            end
             return nil, nil
         end
         

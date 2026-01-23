@@ -368,6 +368,13 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             return
         end
         
+        -- Check if already running
+        if self.findMode then
+            print("[MasterLoot] Find mode already in progress - ignoring new request")
+            print("[MasterLoot] Restart MasterLoot to cancel: /lua stop masterloot && /lua run masterloot")
+            return
+        end
+        
         -- NEW: Disable E3 looting to prevent conflicts
         self.disableE3Loot()
         
@@ -422,14 +429,31 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         local retryCount = {}
         local maxRetries = 2
 
+        local progressInterval = 25  -- Log progress every 25 corpses
+        
         while #corpseTable > 0 do
             local currentCorpse
             self.debugPrint(string.format("[FindMode] Corpses Remaining: %d", #corpseTable))
             
             currentCorpse, corpseTable = corpseManager.getNearestCorpse(corpseTable)
             
+            -- SAFEGUARD: If getNearestCorpse returns nil but table isn't empty, something is wrong
+            if not currentCorpse then
+                if #corpseTable > 0 then
+                    print(string.format("[MasterLoot] WARNING: getNearestCorpse returned nil but %d corpses remain - clearing table", #corpseTable))
+                    corpseTable = {}  -- Force exit to prevent infinite loop
+                end
+                break
+            end
+            
             if currentCorpse and currentCorpse.ID then
                 corpsesProcessed = corpsesProcessed + 1
+                
+                -- Periodic progress report (always visible)
+                if corpsesProcessed % progressInterval == 0 then
+                    print(string.format("[MasterLoot] Progress: %d corpses processed, %d remaining", 
+                        corpsesProcessed, #corpseTable))
+                end
                 
                 if not self.corpseStillExists(currentCorpse.ID) then
                     corpsesDespawned = corpsesDespawned + 1
@@ -442,8 +466,14 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                     self.debugPrint(string.format("[FindMode] Skipping corpse %d - targeted by %s", 
                         currentCorpse.ID, targetedBy or "group member"))
                     corpsesSkippedCollision = corpsesSkippedCollision + 1
-                    -- Don't mark as looted - let us try again later
-                    table.insert(corpseTable, currentCorpse)
+                    -- Track collision retries with same retry counter
+                    retryCount[currentCorpse.ID] = (retryCount[currentCorpse.ID] or 0) + 1
+                    if retryCount[currentCorpse.ID] <= maxRetries then
+                        table.insert(corpseTable, currentCorpse)
+                    else
+                        self.debugPrint(string.format("[FindMode] Corpse %d exceeded collision retry limit", currentCorpse.ID))
+                        corpsesFailed = corpsesFailed + 1
+                    end
                     goto continue
                 end
                 
@@ -950,6 +980,13 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
     end
     
     function self.doLoot(isMaster)
+        -- Check if find mode is running
+        if self.findMode then
+            print("[MasterLoot] Find mode in progress - cannot start loot operation")
+            print("[MasterLoot] Restart MasterLoot to cancel: /lua stop masterloot && /lua run masterloot")
+            return
+        end
+        
         self.debugPrint("Starting loot operation, isMaster: " .. tostring(isMaster))
         mq.cmdf("/g " .. mq.TLO.Me.Name() .. " is beginning Loot")
         
@@ -980,13 +1017,29 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         local corpsesFailed = 0
         local retryCount = {}
         local maxRetries = 3
+        local progressInterval = 25  -- Log progress every 25 corpses
 
         while #corpseTable > 0 do
             local currentCorpse
             currentCorpse, corpseTable = corpseManager.getNearestCorpse(corpseTable)
             
+            -- SAFEGUARD: If getNearestCorpse returns nil but table isn't empty, something is wrong
+            if not currentCorpse then
+                if #corpseTable > 0 then
+                    print(string.format("[MasterLoot] WARNING: getNearestCorpse returned nil but %d corpses remain - clearing table", #corpseTable))
+                    corpseTable = {}  -- Force exit to prevent infinite loop
+                end
+                break
+            end
+            
             if currentCorpse and currentCorpse.ID and not self.isLooted(currentCorpse.ID) then
                 corpsesProcessed = corpsesProcessed + 1
+                
+                -- Periodic progress report (always visible)
+                if corpsesProcessed % progressInterval == 0 then
+                    print(string.format("[MasterLoot] Progress: %d corpses processed, %d remaining", 
+                        corpsesProcessed, #corpseTable))
+                end
                 
                 if not self.corpseStillExists(currentCorpse.ID) then
                     corpsesDespawned = corpsesDespawned + 1
@@ -999,7 +1052,15 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
                 if isTargeted then
                     self.debugPrint(string.format("Skipping corpse %d - targeted by %s", 
                         currentCorpse.ID, targetedBy or "group member"))
-                    table.insert(corpseTable, currentCorpse)
+                    -- Track collision retries with same retry counter
+                    retryCount[currentCorpse.ID] = (retryCount[currentCorpse.ID] or 0) + 1
+                    if retryCount[currentCorpse.ID] <= maxRetries then
+                        table.insert(corpseTable, currentCorpse)
+                    else
+                        self.debugPrint(string.format("Corpse %d exceeded collision retry limit", currentCorpse.ID))
+                        table.insert(self.lootedCorpses, currentCorpse.ID)
+                        corpsesFailed = corpsesFailed + 1
+                    end
                     goto continue
                 end
                 
