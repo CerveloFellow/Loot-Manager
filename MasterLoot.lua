@@ -12,6 +12,7 @@ local CorpseManager = require('modules/CorpseManager')
 local ActorManager = require('modules/ActorManager')
 local ItemScore = require('modules/ItemScore')
 local LootManagerModule = require('modules/LootManager')
+local CorpseScannerModule = require('modules/CorpseScanner')
 local CommandsModule = require('modules/Commands')
 local GUIModule = require('modules/GUI')
 
@@ -41,18 +42,29 @@ local LootManager = LootManagerModule.new(
 ActorManager.initialize(LootManager)
 ActorManager.setHandleShareItem(LootManager.handleSharedItem)
 
--- Initialize Commands
+-- Initialize CorpseScanner
+local CorpseScanner = CorpseScannerModule.new(
+    Config,
+    Utils,
+    nil,  -- lootState - not using separate state yet, using LootManager directly
+    Navigation,
+    ActorManager,
+    LootManager
+)
+
+-- Initialize Commands (now with CorpseScanner)
 local Commands = CommandsModule.new(
     Config,
     Utils,
     ItemEvaluator,
     CorpseManager,
     LootManager,
-    INIManager
+    INIManager,
+    CorpseScanner
 )
 
--- Initialize GUI (now with Utils for lore checking)
-local GUI = GUIModule.new(LootManager, ActorManager, Utils)
+-- Initialize GUI (now with CorpseScanner)
+local GUI = GUIModule.new(LootManager, ActorManager, Utils, CorpseScanner)
 
 -- Register corpse stats handler
 ActorManager.setHandleCorpseStats(GUI.handleCorpseStats)
@@ -76,6 +88,9 @@ mq.bind("/mlpu", LootManager.printUpgradeList)
 -- Usage: /mlfind "search string" - searches all corpses for items matching substring
 mq.bind("/mlfind", Commands.findLoot)
 
+-- NEW: Register scan corpses command (receives assignments from coordinator)
+mq.bind("/mlscan", Commands.scanCorpses)
+
 -- Register events
 -- Updated pattern: mlqi <memberName> <corpseId> <itemId> "<itemName>" <isLore>
 -- Item name is quoted to handle spaces
@@ -83,6 +98,9 @@ mq.event('peerLootItem', '#*#mlqi #1# #2# #3# "#4#" #5#', LootManager.queueItem)
 mq.event('reportUnlooted', '#*#mlru#*#', Commands.reportUnlootedCorpses)
 -- When someone loots an item, remove it from all characters' upgrade lists
 mq.event('itemLooted', '#1# is looting #2#', LootManager.removeFromUpgradeList)
+
+-- NEW: Event for receiving scan assignments via group chat
+mq.event('scanAssignment', '#*#mlscan #1# #2#', Commands.scanCorpses)
 
 -- Register GUI
 ImGui.Register('masterLootGui', GUI.createGUI())
@@ -98,6 +116,7 @@ print("/mlrc       - Reload configuration")
 print("/mlru       - Report unlooted corpses")
 print("/mlpm       - Print multiple use items")
 print("/mlpu       - Print upgrade list")
+print("/mlscan     - Scan assigned corpses (used by coordinator)")
 print("===========================")
 
 -- Main loop
