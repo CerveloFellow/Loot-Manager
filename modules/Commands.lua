@@ -3,7 +3,7 @@ local mq = require('mq')
 
 local Commands = {}
 
-function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, iniManager)
+function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, iniManager, corpseScanner)
     local self = {
         loopBoolean = true,
         config = config,
@@ -11,7 +11,8 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
         itemEvaluator = itemEvaluator,
         corpseManager = corpseManager,
         lootManager = lootManager,
-        iniManager = iniManager
+        iniManager = iniManager,
+        corpseScanner = corpseScanner
     }
     
     function self.testShared()
@@ -182,6 +183,40 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
         end
         
         lootManager.doFindLoot(searchStrings)
+    end
+    
+    -- NEW: Scan corpses command handler
+    -- Can be called directly via /mlscan or via event from group chat
+    -- Direct: /mlscan CharName 142,156,178
+    -- Event: receives (line, charName, corpseIds) from pattern '#*#mlscan #1# #2#'
+    function self.scanCorpses(lineOrCharName, charNameOrCorpseIds, corpseIdsOrNil)
+        if corpseScanner then
+            local charName, corpseIdStr
+            
+            -- Determine if called from event (3 args) or bind (1 arg)
+            if corpseIdsOrNil then
+                -- Called from event: (line, charName, corpseIds)
+                charName = charNameOrCorpseIds
+                corpseIdStr = corpseIdsOrNil
+            elseif charNameOrCorpseIds then
+                -- Called with 2 args: (charName, corpseIds) 
+                charName = lineOrCharName
+                corpseIdStr = charNameOrCorpseIds
+            else
+                -- Called from bind with single line arg: "CharName 142,156,178"
+                charName, corpseIdStr = string.match(lineOrCharName or "", "^(%S+)%s+(.+)$")
+            end
+            
+            if charName and corpseIdStr then
+                local combined = charName .. " " .. corpseIdStr
+                corpseScanner.handleScanCommand(combined)
+            else
+                print("[Commands] ERROR: Invalid /mlscan format")
+                print("Usage: /mlscan <charName> <corpseId1>,<corpseId2>,...")
+            end
+        else
+            print("[Commands] ERROR: CorpseScanner not initialized")
+        end
     end
     
     -- Debug command to dump the shared items table

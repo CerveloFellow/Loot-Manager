@@ -4,13 +4,14 @@ local imgui = require('ImGui')
 
 local GUI = {}
 
-function GUI.new(lootManager, actorManager, utils)
+function GUI.new(lootManager, actorManager, utils, corpseScanner)
     local self = {
         radioSelectedOption = 0,
         groupMemberSelected = mq.TLO.Me.Name(),
         lootManager = lootManager,
         actorManager = actorManager,
         utils = utils,
+        corpseScanner = corpseScanner,
         groupMemberCorpseStats = {}  -- Track unlooted corpse counts per member
     }
     
@@ -374,6 +375,14 @@ end
                 print("You must select an item")
             else
                 mq.cmdf("/dgga /mlpu \"%s\"", lootManager.listboxSelectedOption.itemName)
+            end
+        end
+
+        if imgui.Button("Scan All Corpses") then
+            if corpseScanner then
+                corpseScanner.coordinateScan()
+            else
+                print("ERROR: CorpseScanner not initialized")
             end
         end
         

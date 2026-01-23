@@ -265,11 +265,11 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         mq.delay(self.delays.corpseOpen, function() return self.isWindowOpen("LootWnd") end)
 
         local retryCount = 0
-        local maxRetries = 3
+        local maxRetries = 5
 
         if self.isWindowClosed("LootWnd") then
             while retryCount < maxRetries do
-                if retryCount > 1 then
+                if retryCount > 3 then
                     mq.cmdf("/say #corpsefix")
                 end
                 mq.delay(self.delays.corpseFix)
@@ -409,7 +409,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         mq.delay(self.delays.stickOff)
         
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")()
+        -- Use larger radius for find mode (1000 units) to balance coverage with reliability
+        -- Zone-wide queries can return nil IDs for very distant corpses
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 1000")()
         local corpseTable = corpseManager.getCorpseTable(spawnCount)
         
         local corpsesProcessed = 0
@@ -426,7 +428,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
             
             currentCorpse, corpseTable = corpseManager.getNearestCorpse(corpseTable)
             
-            if currentCorpse and currentCorpse.ID and not self.isLooted(currentCorpse.ID) then
+            if currentCorpse and currentCorpse.ID then
                 corpsesProcessed = corpsesProcessed + 1
                 
                 if not self.corpseStillExists(currentCorpse.ID) then
@@ -968,7 +970,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         end
         mq.delay(self.delays.stickOff)
         
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")()
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 500 zradius 30")()
         local corpseTable = corpseManager.getCorpseTable(spawnCount)
         
         local corpsesProcessed = 0
