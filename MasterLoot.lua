@@ -116,7 +116,7 @@ print("/mlrc       - Reload configuration")
 print("/mlru       - Report unlooted corpses")
 print("/mlpm       - Print multiple use items")
 print("/mlpu       - Print upgrade list")
-print("/mlscan     - Scan assigned corpses (used by coordinator)")
+-- /mlscan is internal, not shown in help
 print("===========================")
 
 -- Main loop
