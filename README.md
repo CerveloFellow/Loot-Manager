@@ -17,6 +17,8 @@ ProFusion Loot Manager eliminates the tedious process of manually looting corpse
 - Centralized loot window for shared items
 - Configurable value thresholds and item filters
 - Support for both warp and navigation movement
+- Targeted item searching with `/mlfind`
+- Zone-wide corpse scanning for item cataloging
 
 ---
 
@@ -86,6 +88,86 @@ LootSingleMinValue=500
 
 ---
 
+## Commands
+
+### /mlml - Master Loot
+Loots all corpses within range (500 unit radius). Characters will only loot items they can use or items that meet the configured value thresholds.
+
+### /mlfind - Find and Loot Specific Items
+Searches all corpses within range (1000 unit radius) for items matching the specified search strings. This is useful for finding specific drops without looting everything.
+
+#### Syntax
+```
+/mlfind '<search strings>'
+```
+
+**IMPORTANT:** When using `/mlfind` with `/dgga` (to run on all characters), you must:
+1. Wrap the **entire argument** in single quotes `'...'`
+2. Wrap **each search term** in double quotes `"..."`
+
+#### The + Prefix
+Adding a `+` before a search term means **"loot all matches even if I already have one"**. Without the `+`, the character will only loot the item if they don't already have it in their inventory or bank.
+
+| Prefix | Behavior |
+|--------|----------|
+| `"term"` | Only loot if character does not have this item in their inventory or bank. Useful for items like Astrial Shards which are not tradeable and you want every group member to get one. |
+| `"+term"` | Loot ALL matching items regardless of whether the character already has one. |
+
+#### Examples
+
+**Search for a single item (simple case):**
+```
+/mlfind sword
+```
+
+**Search for multiple items on all characters:**
+```
+/dgga /mlfind '"astrial" "hermit" "celestial"'
+```
+This searches for items containing "astrial", "hermit", or "celestial" in their names. Characters will only loot items they can use.
+
+**Search and loot ALL matching items (even if you already have one):**
+```
+/dgga /mlfind '"+astrial" "+hermit" "+celestial"'
+```
+The `+` prefix means every character will loot any matching item, even if they already have one in their inventory or bank. Useful for collecting tradeable items to distribute later.
+
+**Mixed search - some check inventory, some loot-all:**
+```
+/dgga /mlfind '"astrial" "+immortality" "+advancement"'
+```
+This will:
+- Loot "astrial" items only if the character doesn't already have one (good for no-trade items everyone needs)
+- Loot ALL "immortality" items even if the character already has one
+- Loot ALL "advancement" items even if the character already has one
+
+**Searching for gems/tradeskill items:**
+```
+/dgga /mlfind '"+emerald" "+diamond" "+sapphire" "+ruby"'
+```
+
+**Common farming pattern:**
+```
+/dgga /mlfind '"+fallen" "+unidentified" "+hermit" "+bear"'
+```
+
+### /mlli - Loot Queued Items
+Commands the character to loot all items that have been queued for them via the GUI.
+
+### /mlrc - Reload Configuration
+Reloads the INI file without restarting the script.
+
+### /mlru - Report Unlooted Corpses
+All characters report how many unlooted corpses are near them.
+
+### /mlpm - Print Multiple Use Items
+Prints item links for all items in the shared loot window.
+
+### /mlpu - Print Upgrade List
+Characters report which shared items would be upgrades for them.
+
+---
+
 ## Features & Usage
 
 ### Main Window Controls
@@ -97,6 +179,9 @@ LootSingleMinValue=500
   - **Orange** = 34% to 66%
   - **Red** = 67% to 100%
   
+#### **Everyone Loot**
+- All characters will start looting simultaneously
+
 #### **Loot Button**
 - Select a group member using the radio buttons
 - Click "Loot" to have that character loot all unlooted corpses
@@ -116,13 +201,6 @@ LootSingleMinValue=500
 - Commands the selected character to loot all items queued for them
 - Character will navigate to the appropriate corpses and loot assigned items
 
-#### **Reload INI**
-- Reloads the INI file without restarting the script
-- Useful when you modify settings on the fly
-
-#### **Everyone Loot**
-- All characters will start looting simultaneously
-
 #### **Clear Shared List**
 - Clears all items from the Loot Window
 - Use this to reset the shared item list
@@ -135,8 +213,23 @@ LootSingleMinValue=500
 #### **Print Unlooted Corpses**
 - Pressing this button will show the number of unlooted corpses for any characters. Characters with zero unlooted corpses will not respond.
 
-#### **Show Upgrade for Selected Item**
+#### **Show Upgrades**
 - If you have an item from the shared list selected and press this button, characters who would receive an upgrade will respond with the item name, slot, and the percentage that the item is better
+
+#### **Scan All Corpses**
+- Scans all corpses within range (1000 unit radius) and adds ALL items found to the shared loot window
+- Corpses are divided among group members for faster scanning
+- Each character scans their assigned corpses and broadcasts items found
+- All characters end up with the same shared item list
+- Useful for cataloging loot before deciding who gets what
+
+**How Scan All Corpses Works:**
+1. Click the "Scan All Corpses" button
+2. The coordinator (whoever clicked) divides corpses among all group members
+3. Each character receives their assignment via group chat
+4. Characters scan their assigned corpses and broadcast all items found
+5. All items appear in the shared loot window on all characters
+6. Failed scans are reported at the end
 
 ---
 
@@ -154,6 +247,17 @@ LootSingleMinValue=500
    - You can assign multiple items to a character before sending them off to loot
    - Once all the items you want to loot have been queued up, click the "Get Shared Item(s)" button to direct that character to loot the items
 
+**Alternative Workflow - Catalog First:**
+
+1. **Use Scan All Corpses:**
+   - Click "Scan All Corpses" to catalog everything on all corpses
+   - Review the shared item list to see what dropped
+   - Assign valuable items to specific characters
+
+2. **Use /mlfind for Targeted Looting:**
+   - After assigning shared items, use `/mlfind` to grab specific drops
+   - Example: `/dgga /mlfind '"+diamond" "+emerald"'` to grab all gems
+
 ---
 
 ## Requirements
@@ -167,12 +271,6 @@ LootSingleMinValue=500
 
 ## Known Issues
 
-### Duplicate Shared Items
-When a single corpse contains multiple instances of the same item that can be used by group members, only one instance appears in the Loot Window due to ImGui Listbox limitations.
-
-### Some Items Report Twice
-There's a bug I'm working on where a character incorrectly reports which corpse the item is on, and the item shows up in the list box twice on different corpses.
-
 ### Corpse Window Access
 Characters occasionally fail to open corpse windows despite `#corpsefix` commands and retry logic. `#corpsefix` is used on retries, but this can be annoying when all characters are looting, so I've reduced how frequently it's used.
 
@@ -180,6 +278,9 @@ Characters occasionally fail to open corpse windows despite `#corpsefix` command
 Shared items are not removed from all windows when they are assigned from one character via the Queue button. Assigning the item removes it from whoever clicked the button but does not remove it from other characters' windows.
 
 The upgrade list for characters does not clear out an item that has been looted until you press the Clear button.
+
+### /mlfind Not Responding
+If `/mlfind` stops responding after running multiple times, the script may be stuck processing a previous command. Restart the script with `/lua stop masterloot` followed by `/lua run masterloot`.
 
 ---
 
