@@ -69,16 +69,40 @@ function INIManager.loadSettings(config)
     else
         INIManager.saveSettings(config)
     end
+    
+    -- Load LootRadius
+    local radiusValue = mq.TLO.Ini.File(config.iniFile).Section('Settings').Key('LootRadius').Value()
+    
+    if radiusValue ~= nil and radiusValue ~= 'NULL' and radiusValue ~= '' then
+        config.lootRadius = tonumber(radiusValue)
+        print(string.format("Loaded LootRadius: %d", config.lootRadius))
+    else
+        INIManager.saveSettings(config)
+    end
+    
+    -- Load LootZRadius
+    local zRadiusValue = mq.TLO.Ini.File(config.iniFile).Section('Settings').Key('LootZRadius').Value()
+    
+    if zRadiusValue ~= nil and zRadiusValue ~= 'NULL' and zRadiusValue ~= '' then
+        config.lootZRadius = tonumber(zRadiusValue)
+        print(string.format("Loaded LootZRadius: %d", config.lootZRadius))
+    else
+        INIManager.saveSettings(config)
+    end
 end
 
 function INIManager.saveSettings(config)
     mq.cmdf('/ini "%s" "Settings" "UseWarp" "%s"', config.iniFile, tostring(config.useWarp))
     mq.cmdf('/ini "%s" "Settings" "LootStackableMinValue" "%d"', config.iniFile, config.lootStackableMinValue)
     mq.cmdf('/ini "%s" "Settings" "LootSingleMinValue" "%d"', config.iniFile, config.lootSingleMinValue)
+    mq.cmdf('/ini "%s" "Settings" "LootRadius" "%d"', config.iniFile, config.lootRadius)
+    mq.cmdf('/ini "%s" "Settings" "LootZRadius" "%d"', config.iniFile, config.lootZRadius)
     
     print(string.format("Saved UseWarp setting: %s", tostring(config.useWarp)))
     print(string.format("Saved LootStackableMinValue: %d", config.lootStackableMinValue))
     print(string.format("Saved LootSingleMinValue: %d", config.lootSingleMinValue))
+    print(string.format("Saved LootRadius: %d", config.lootRadius))
+    print(string.format("Saved LootZRadius: %d", config.lootZRadius))
 end
 
 function INIManager.initializeINI(config)

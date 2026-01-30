@@ -2,12 +2,27 @@
 local mq = require('mq')
 
 local CorpseManager = {}
+CorpseManager.config = nil  -- Store config reference
+
+-- Initialize with config reference
+function CorpseManager.initialize(config)
+    CorpseManager.config = config
+end
+
+-- Helper to build spawn search string with configured radius values
+function CorpseManager.getSpawnSearchString()
+    local radius = CorpseManager.config and CorpseManager.config.lootRadius or 250
+    local zRadius = CorpseManager.config and CorpseManager.config.lootZRadius or 30
+    return string.format("npccorpse radius %d zradius %d", radius, zRadius)
+end
 
 function CorpseManager.getCorpseTable(numCorpses)
     local corpseTable = {}
+    local searchString = CorpseManager.getSpawnSearchString()
     
     print(string.format("[CorpseManager] ===== BUILDING CORPSE TABLE ====="))
     print(string.format("[CorpseManager] SpawnCount returned: %d corpses", numCorpses))
+    print(string.format("[CorpseManager] Search string: %s", searchString))
     
     local skipped = {
         noSpawn = 0,
@@ -16,7 +31,7 @@ function CorpseManager.getCorpseTable(numCorpses)
     }
     
     for i = 1, numCorpses do
-        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 1000")
+        local spawn = mq.TLO.NearestSpawn(i, searchString)
         
         if not spawn then
             skipped.noSpawn = skipped.noSpawn + 1

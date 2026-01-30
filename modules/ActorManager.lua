@@ -7,6 +7,14 @@ ActorManager.actorMailbox = nil
 ActorManager.handleShareItem = nil
 ActorManager.handleCorpseStats = nil  -- Handler for corpse statistics
 ActorManager.lootManagerInstance = nil  -- NEW: Store reference to LootManager instance
+ActorManager.config = nil  -- Store config reference
+
+-- Helper to build spawn search string with configured radius values
+function ActorManager.getSpawnSearchString()
+    local radius = ActorManager.config and ActorManager.config.lootRadius or 250
+    local zRadius = ActorManager.config and ActorManager.config.lootZRadius or 30
+    return string.format("npccorpse radius %d zradius %d", radius, zRadius)
+end
 
 function ActorManager.broadcastClearSharedList()
     local groupSize = (mq.TLO.Group.GroupSize() or 0) - 1
@@ -28,9 +36,10 @@ function ActorManager.broadcastClearSharedList()
     end
 end
 
-function ActorManager.initialize(lootManager)
-    -- Store reference to lootManager for use in message handling
+function ActorManager.initialize(lootManager, config)
+    -- Store references for use in message handling
     ActorManager.lootManagerInstance = lootManager
+    ActorManager.config = config
     
     ActorManager.actorMailbox = actors.register('masterloot', function(message)
         local actualMessage = message
@@ -62,12 +71,13 @@ function ActorManager.initialize(lootManager)
                 end
             elseif actualMessage.type == 'requestCorpseStats' then
                 -- Calculate and send back our corpse stats
-                local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")() or 0
+                local searchString = ActorManager.getSpawnSearchString()
+                local totalCorpses = mq.TLO.SpawnCount(searchString)() or 0
                 local unlootedCount = 0
                 
                 if totalCorpses > 0 and ActorManager.lootManagerInstance then
                     for i = 1, totalCorpses do
-                        local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 30")
+                        local spawn = mq.TLO.NearestSpawn(i, searchString)
                         if spawn and spawn.ID() and spawn.ID() > 0 then
                             local corpseId = spawn.ID()
                             local isLooted = false

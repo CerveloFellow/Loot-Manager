@@ -4,7 +4,7 @@ local imgui = require('ImGui')
 
 local GUI = {}
 
-function GUI.new(lootManager, actorManager, utils, corpseScanner)
+function GUI.new(lootManager, actorManager, utils, corpseScanner, config)
     local self = {
         radioSelectedOption = 0,
         groupMemberSelected = mq.TLO.Me.Name(),
@@ -12,8 +12,16 @@ function GUI.new(lootManager, actorManager, utils, corpseScanner)
         actorManager = actorManager,
         utils = utils,
         corpseScanner = corpseScanner,
+        config = config,
         groupMemberCorpseStats = {}  -- Track unlooted corpse counts per member
     }
+    
+    -- Helper to build spawn search string with configured radius values
+    function self.getSpawnSearchString()
+        local radius = self.config and self.config.lootRadius or 250
+        local zRadius = self.config and self.config.lootZRadius or 30
+        return string.format("npccorpse radius %d zradius %d", radius, zRadius)
+    end
     
     function self.initializeDefaults()
         if self.radioSelectedOption == nil then
@@ -68,12 +76,13 @@ function GUI.new(lootManager, actorManager, utils, corpseScanner)
         local myName = mq.TLO.Me.Name()
         if not myName then return end
         
-        local totalCorpses = mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")() or 0
+        local searchString = self.getSpawnSearchString()
+        local totalCorpses = mq.TLO.SpawnCount(searchString)() or 0
         local unlootedCount = 0
         
         if totalCorpses > 0 then
             for i = 1, totalCorpses do
-                local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 200 zradius 30")
+                local spawn = mq.TLO.NearestSpawn(i, searchString)
                 if spawn and spawn.ID() and spawn.ID() > 0 then
                     local corpseId = spawn.ID()
                     local isLooted = false

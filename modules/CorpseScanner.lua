@@ -327,7 +327,7 @@ function CorpseScanner.new(config, utils, lootState, navigation, actorManager, l
         
         -- Build corpse table - use large radius (1000) to balance coverage with reliability
         -- Zone-wide queries can return nil IDs for very distant corpses
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 1000")()
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 100")()
         
         if spawnCount == 0 then
             mq.cmdf("/g No corpses found to scan")
@@ -337,7 +337,7 @@ function CorpseScanner.new(config, utils, lootState, navigation, actorManager, l
         -- Get all corpse IDs
         local allCorpses = {}
         for i = 1, spawnCount do
-            local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 1000")
+            local spawn = mq.TLO.NearestSpawn(i, "npccorpse radius 100")
             if spawn and spawn.ID() and spawn.ID() > 0 then
                 table.insert(allCorpses, spawn.ID())
             end

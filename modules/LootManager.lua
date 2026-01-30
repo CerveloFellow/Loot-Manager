@@ -418,7 +418,7 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         
         -- Use larger radius for find mode (1000 units) to balance coverage with reliability
         -- Zone-wide queries can return nil IDs for very distant corpses
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 1000")()
+        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 100")()
         local corpseTable = corpseManager.getCorpseTable(spawnCount)
         
         local corpsesProcessed = 0
@@ -1007,7 +1007,9 @@ function LootManager.new(config, utils, itemEvaluator, corpseManager, navigation
         end
         mq.delay(self.delays.stickOff)
         
-        local spawnCount = mq.TLO.SpawnCount("npccorpse radius 500 zradius 30")()
+        local searchString = string.format("npccorpse radius %d zradius %d", 
+            config.lootRadius or 250, config.lootZRadius or 30)
+        local spawnCount = mq.TLO.SpawnCount(searchString)()
         local corpseTable = corpseManager.getCorpseTable(spawnCount)
         
         local corpsesProcessed = 0

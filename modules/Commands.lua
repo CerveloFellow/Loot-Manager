@@ -73,8 +73,10 @@ function Commands.new(config, utils, itemEvaluator, corpseManager, lootManager, 
     end
     
     function self.reportUnlootedCorpses(line)
-        -- Get all corpses within radius
-        local nearbyCorpses = corpseManager.getCorpseTable(mq.TLO.SpawnCount("npccorpse radius 200 zradius 30")())
+        -- Get all corpses within radius using configured values
+        local searchString = string.format("npccorpse radius %d zradius %d", 
+            config.lootRadius or 250, config.lootZRadius or 30)
+        local nearbyCorpses = corpseManager.getCorpseTable(mq.TLO.SpawnCount(searchString)())
         
         -- Find corpses that are NOT in the looted list
         local unlootedCorpses = {}
