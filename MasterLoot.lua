@@ -27,6 +27,9 @@ print("INI file location: " .. Config.iniFile)
 -- Load configuration from INI
 INIManager.loadConfig(Config)
 
+-- Initialize CorpseManager with config
+CorpseManager.initialize(Config)
+
 -- Initialize LootManager (now with ItemScore)
 local LootManager = LootManagerModule.new(
     Config,
@@ -38,8 +41,8 @@ local LootManager = LootManagerModule.new(
     ItemScore
 )
 
--- Initialize Actor System
-ActorManager.initialize(LootManager)
+-- Initialize Actor System with config
+ActorManager.initialize(LootManager, Config)
 ActorManager.setHandleShareItem(LootManager.handleSharedItem)
 
 -- Initialize CorpseScanner
@@ -63,8 +66,8 @@ local Commands = CommandsModule.new(
     CorpseScanner
 )
 
--- Initialize GUI (now with CorpseScanner)
-local GUI = GUIModule.new(LootManager, ActorManager, Utils, CorpseScanner)
+-- Initialize GUI (now with CorpseScanner and Config)
+local GUI = GUIModule.new(LootManager, ActorManager, Utils, CorpseScanner, Config)
 
 -- Register corpse stats handler
 ActorManager.setHandleCorpseStats(GUI.handleCorpseStats)
